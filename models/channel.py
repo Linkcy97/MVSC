@@ -39,14 +39,15 @@ class Channel(nn.Module):
 
 
     def complex_normalize(self, x, power):
-        pwr = torch.mean(x ** 2) * 2
-        out = np.sqrt(power) * x / torch.sqrt(pwr)
+        pwr = torch.mean(x ** 2) * 2                   # power of the input signal
+        out = np.sqrt(power) * x / torch.sqrt(pwr)     # normalize the input signal
         return out, pwr
 
 
     def forward(self, input, chan_param, avg_pwr=False):
         if avg_pwr:
             power = 1
+            avg_pwr = torch.tensor(avg_pwr)
             channel_tx = np.sqrt(power) * input / torch.sqrt(avg_pwr * 2)
         else:
             channel_tx, pwr = self.complex_normalize(input, power=1)
@@ -64,7 +65,7 @@ class Channel(nn.Module):
             if avg_pwr:
                 return channel_tx * torch.sqrt(avg_pwr * 2)
             else:
-                return channel_tx * torch.sqrt(pwr)
+                return channel_tx* torch.sqrt(pwr)
         elif self.chan_type == 2 or self.chan_type == 'rayleigh':
             if avg_pwr:
                 return channel_output * torch.sqrt(avg_pwr * 2)

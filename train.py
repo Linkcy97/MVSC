@@ -14,7 +14,6 @@ from utils.datasets import get_loader
 import timm
 from tensorboardX import SummaryWriter
 from models.mamba_vision import MVSC
-import argparse
 from engine import *
 import os
 import sys
@@ -24,32 +23,6 @@ from configs.config import setting_config
 import warnings
 warnings.filterwarnings("ignore")
 
-
-parser = argparse.ArgumentParser(description='VIMSC-Net')
-parser.add_argument('--training', action='store_true',default='training',
-                    help='training or testing')
-parser.add_argument('--trainset', type=str, default='CIFAR10',
-                    choices=['CIFAR10', 'DIV2K'],
-                    help='train dataset name')
-parser.add_argument('--testset', type=str, default='Kodak',
-                    choices=['Kodak', 'CLIC21'],
-                    help='specify the testset for HR models')
-parser.add_argument('--distortion-metric', type=str, default='MSE',
-                    choices=['MSE', 'MS-SSIM'],
-                    help='evaluation metrics')
-parser.add_argument('--model', type=str, default='WITT',
-                    choices=['WITT', 'WITT_W/O'],
-                    help='WITT model or WITT without channel ModNet')
-parser.add_argument('--channel-type', type=str, default='awgn',
-                    choices=['awgn', 'rayleigh'],
-                    help='wireless channel model, awgn or rayleigh')
-parser.add_argument('--C', type=int, default=96,
-                    help='bottleneck dimension')
-parser.add_argument('--multiple-snr', type=str, default='1,4,7,10,13',
-                    help='random or fixed snr')
-parser.add_argument('--pretrained', type=str, default='',
-                    help='pretrained model path')
-args = parser.parse_args()
 
 
 def main(config):
@@ -80,7 +53,7 @@ def main(config):
 
 
     print('#----------Preparing dataset----------#')
-    train_loader, val_loader, test_loader = get_loader(args, config)
+    train_loader, val_loader, test_loader = get_loader(config)
 
 
 
@@ -104,7 +77,7 @@ def main(config):
 
 
     print('#----------Set other params----------#')
-    min_loss = 999
+    min_loss = 9999
     start_epoch = 1
     min_epoch = 1
 

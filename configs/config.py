@@ -16,8 +16,8 @@ class setting_config:
         C = 8
         model_config = {
             'input_channels': 3, 
-            'depths':[2, 4],
-            'num_heads':[4, 8],
+            'depths':[2, 2],
+            'num_heads':[4, 4],
             'window_size':[8, 2],
             'dim':128,
             'C':C,
@@ -27,15 +27,15 @@ class setting_config:
             'drop_path_rate':0.2
         }
     elif datasets == 'DIV2K':
-        C = 16
+        C = 96
         model_config = {
             'input_channels': 3, 
-            'depths':[1, 3, 8, 4],
-            'num_heads':[2, 4, 8, 16],
-            'window_size':[8, 8, 14, 7],
-            'dim':32,
+            'depths':[2, 2, 2, 2],
+            'num_heads':[2, 2, 2, 2],                   
+            'window_size':[8, 8, 16, 8],
+            'dim':128,
             'C':C,
-            'in_dim':32,
+            'in_dim':128,
             'mlp_ratio':4,
             'resolution':256,
             'drop_path_rate':0.2
@@ -52,6 +52,9 @@ class setting_config:
 
     norm = False
     criterion = MSELoss()
+    # multiple_snr = [-7]
+    multiple_snr = [-7, -4, 0, 4, 7, 30]
+    # multiple_snr = [1, 4, 7, 10, 13]
 
     pretrained_path = './pre_trained/'
     num_classes = 10
@@ -65,22 +68,23 @@ class setting_config:
         input_size_h = 256
         input_size_w = 256
         input_channels = 3
-        batch_size = 16
+        batch_size = 4
         print_interval = 10
 
     image_dims = (input_channels, input_size_h, input_size_w)
     distributed = False
     local_rank = -1
     num_workers = 0
-    seed = 42
+    seed = 1024
     world_size = None
     rank = None
     amp = False
     device = 'cuda'
     gpu_id = '0'
-    epochs = 100
+    epochs = 10
 
     work_dir = 'results/' +  datasets + '_' + datetime.now().strftime('%Y-%m-%d_%H-%M-%S') + '/'
+    # work_dir = 'results/' + 'CIFAR10_-7' + '/'
 
     val_interval = 30
     save_interval = 100

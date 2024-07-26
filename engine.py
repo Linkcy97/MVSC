@@ -59,7 +59,7 @@ def train_one_epoch(train_loader,
                        f'psnr: {np.mean(psnr_list):.4f}, ms_ssim: {np.mean(ms_ssim_list):.4f}, lr: {now_lr}')
             print(log_info)
             logger.info(log_info)
-    scheduler.step() 
+    # scheduler.step()
     return step
 
 
@@ -71,7 +71,7 @@ def val_one_epoch(test_loader,
                     config):
     # switch to evaluate mode
     model.eval()
-    multiple_snr = [1, 4, 7, 10, 13]
+    multiple_snr = config.multiple_snr
     loss_list, psnr_list, ms_ssim_list = [[] for _ in range(len(multiple_snr))], \
                                          [[] for _ in range(len(multiple_snr))], \
                                          [[] for _ in range(len(multiple_snr))]
@@ -91,16 +91,16 @@ def val_one_epoch(test_loader,
                     img = data
                 img = img.cuda(non_blocking=True).float()
 
-                out, cbr, snr = model(img)
+                out, cbr, snr = model(img,multiple_snr[i])
                 loss = criterion(out*255., img*255.)
 
                 loss_list[i].append(loss.item())
                 psnr_list[i].append(psnr_loss(out, img).item())
                 ms_ssim_list[i].append(1 - CalcuSSIM(img, out.clamp(0., 1.)).mean().item())
 
-        loss_list_avg = [round(np.mean(sublist)) if sublist else 0 for sublist in loss_list]
-        psnr_list_avg = [round(np.mean(sublist)) if sublist else 0 for sublist in psnr_list]
-        ms_ssim_list_avg = [round(np.mean(sublist)) if sublist else 0 for sublist in ms_ssim_list]
+        loss_list_avg = [round(np.mean(sublist),4) if sublist else 0 for sublist in loss_list]
+        psnr_list_avg = [round(np.mean(sublist),4) if sublist else 0 for sublist in psnr_list]
+        ms_ssim_list_avg = [round(np.mean(sublist),4) if sublist else 0 for sublist in ms_ssim_list]
         log_info = (f'val epoch: {epoch}, loss: {loss_list_avg}, cbr: {cbr}, snr: {snr},'
                     f'psnr: {psnr_list_avg}, ms_ssim: {ms_ssim_list_avg}')
         print(log_info)
@@ -116,7 +116,7 @@ def test_one_epoch(test_loader,
                     test_data_name=None):
     # switch to evaluate mode
     model.eval()
-    multiple_snr = [1, 4, 7, 10, 13]
+    multiple_snr = config.multiple_snr
     loss_list, psnr_list, ms_ssim_list = [[] for _ in range(len(multiple_snr))], \
                                          [[] for _ in range(len(multiple_snr))], \
                                          [[] for _ in range(len(multiple_snr))]
@@ -137,8 +137,8 @@ def test_one_epoch(test_loader,
                     img = data
                 img  = img.cuda(non_blocking=True).float()
 
-                out, cbr, snr = model(img)
-                loss = criterion(out, img)
+                out, cbr, snr = model(img,multiple_snr[i])
+                loss = criterion(out*255., img*255.)
 
                 loss_list[i].append(loss.item())
                 psnr_list[i].append(psnr_loss(out, img).item())
@@ -150,9 +150,9 @@ def test_one_epoch(test_loader,
                     if i == j:
                         save_imgs(img, out, i, config.work_dir + 'outputs/', test_data_name='_%ssnr'%multiple_snr[i])
 
-        loss_list_avg = [round(np.mean(sublist)) if sublist else 0 for sublist in loss_list]
-        psnr_list_avg = [round(np.mean(sublist)) if sublist else 0 for sublist in psnr_list]
-        ms_ssim_list_avg = [round(np.mean(sublist)) if sublist else 0 for sublist in ms_ssim_list]
+        loss_list_avg = [round(np.mean(sublist),4) if sublist else 0 for sublist in loss_list]
+        psnr_list_avg = [round(np.mean(sublist),4) if sublist else 0 for sublist in psnr_list]
+        ms_ssim_list_avg = [round(np.mean(sublist),4) if sublist else 0 for sublist in ms_ssim_list]
         if test_data_name is not None:
             log_info = f'test_datasets_name: {test_data_name}'
             print(log_info)

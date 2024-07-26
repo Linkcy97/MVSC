@@ -24,9 +24,7 @@ def worker_init_fn_seed(worker_id):
     np.random.seed(seed)
 
 class HR_image(Dataset):
-    files = {"train": "train", "test": "test", "val": "validation"}
-
-    def __init__(self, config, data_dir):
+    def __init__(self, config, data_dir, add_noise=False):
         self.imgs = []
         for dir in data_dir:
             self.imgs += glob(os.path.join(dir, '*.jpg'))
@@ -41,7 +39,7 @@ class HR_image(Dataset):
         Up(down)scale and randomly crop to `crop_size` x `crop_size`
         """
         transforms_list = [
-            transforms.RandomCrop((self.im_height, self.im_width)),
+            transforms.Resize([self.im_height, self.im_width]),
             transforms.ToTensor()]
 
         return transforms.Compose(transforms_list)
@@ -96,13 +94,13 @@ class CIFAR10(Dataset):
         return self.len * 10
 
 
-def get_loader(args, config):
-    if args.trainset == 'DIV2K':
+def get_loader(config):
+    if config.datasets == 'DIV2K':
         train_dataset = HR_image(config, config.train_data_dir)
         val_dataset = Datasets(config.val_data_dir)
         val_dataset = data.Subset(val_dataset, range(20))
         test_dataset = Datasets(config.test_data_dir)
-    elif args.trainset == 'CIFAR10':
+    elif config.datasets == 'CIFAR10':
         dataset_ = datasets.CIFAR10
         if config.norm is True:
             transform_train = transforms.Compose([
@@ -148,7 +146,7 @@ def get_loader(args, config):
                                             shuffle=True,
                                             drop_last=True)
     
-    if args.trainset == 'CIFAR10':
+    if config.datasets == 'CIFAR10':
         val_loader = data.DataLoader(dataset=val_dataset,
                                             batch_size=512,
                                             shuffle=False)
@@ -156,7 +154,7 @@ def get_loader(args, config):
                                   batch_size=1,
                                   shuffle=False)
 
-    elif args.trainset == 'DIV2K':
+    elif config.datasets == 'DIV2K':
         test_loader = data.DataLoader(dataset=test_dataset,
                                               batch_size=1,
                                               shuffle=False)
