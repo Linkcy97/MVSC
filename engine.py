@@ -3,9 +3,11 @@ from tqdm import tqdm
 import torch
 from torch.cuda.amp import autocast as autocast
 from sklearn.metrics import confusion_matrix
-from utils.utils import save_imgs
+from utils.utils import save_imgs, AverageMeter
 from models.distortion import *
-
+    
+squared_difference = torch.nn.MSELoss(reduction='none')
+distortion_loss = Distortion()
 
 def train_one_epoch(train_loader,
                     model,
@@ -29,7 +31,8 @@ def train_one_epoch(train_loader,
     else:
         CalcuSSIM = MS_SSIM(data_range=1., levels=4, channel=3).cuda()
 
-    loss_list, psnr_list, ms_ssim_list = [], [], []
+    losses, psnrs, ms_ssims, snrs = [AverageMeter() for _ in range(4)]
+    metrics = [losses, psnrs, ms_ssims, snrs]
     for iter, data in enumerate(train_loader):
         step += iter
         optimizer.zero_grad()
@@ -40,25 +43,38 @@ def train_one_epoch(train_loader,
         images = images.cuda(non_blocking=True).float()
 
         out, cbr, snr = model(images)
-        loss = criterion(out*255., images*255.)
-
+        # loss = criterion(out*255., images*255.)
+        loss = distortion_loss.forward(images, out.clamp(0., 1.))
+        optimizer.zero_grad()
         loss.backward()
         optimizer.step()
         
 
-        loss_list.append(loss.item())
-        psnr_list.append(psnr_loss(out, images).item())
-        ms_ssim_list.append(1 - CalcuSSIM(images, out.clamp(0., 1.)).mean().item())        
+        losses.update(loss.item())
+        psnrs.update(psnr_loss(out, images).item())
+        ms_ssims.update(1 - CalcuSSIM(images, out.clamp(0., 1.)).mean().item())   
+        snrs.update(snr)     
 
         now_lr = optimizer.state_dict()['param_groups'][0]['lr']
 
         writer.add_scalar('loss', loss, global_step=step)
 
         if iter % config.print_interval == 0:
-            log_info =( f'train: epoch {epoch}, iter:{iter}, loss: {np.mean(loss_list):.4f}, cbr: {cbr:.4f}, snr: {snr},'
-                       f'psnr: {np.mean(psnr_list):.4f}, ms_ssim: {np.mean(ms_ssim_list):.4f}, lr: {now_lr}')
+            log_info =(' | '.join([
+                    f'Epoch {epoch}',
+                    f'iter [{iter}',
+                    f'Loss {losses.val:.3f} ({losses.avg:.3f})',
+                    f'CBR {cbr:.4f}',
+                    f'SNR {snrs.val:.1f} ({snrs.avg:.1f})',
+                    f'PSNR {psnrs.val:.3f} ({psnrs.avg:.3f})',
+                    f'MSSSIM {ms_ssims.val:.3f} ({ms_ssims.avg:.3f})',
+                    f'Lr {now_lr}',
+                ]))
             print(log_info)
             logger.info(log_info)
+            for i in metrics:
+                i.clear()
+
     # scheduler.step()
     return step
 
@@ -98,9 +114,9 @@ def val_one_epoch(test_loader,
                 psnr_list[i].append(psnr_loss(out, img).item())
                 ms_ssim_list[i].append(1 - CalcuSSIM(img, out.clamp(0., 1.)).mean().item())
 
-        loss_list_avg = [round(np.mean(sublist),4) if sublist else 0 for sublist in loss_list]
-        psnr_list_avg = [round(np.mean(sublist),4) if sublist else 0 for sublist in psnr_list]
-        ms_ssim_list_avg = [round(np.mean(sublist),4) if sublist else 0 for sublist in ms_ssim_list]
+        loss_list_avg = [round(np.mean(sublist),3) if sublist else 0 for sublist in loss_list]
+        psnr_list_avg = [round(np.mean(sublist),3) if sublist else 0 for sublist in psnr_list]
+        ms_ssim_list_avg = [round(np.mean(sublist),3) if sublist else 0 for sublist in ms_ssim_list]
         log_info = (f'val epoch: {epoch}, loss: {loss_list_avg}, cbr: {cbr}, snr: {snr},'
                     f'psnr: {psnr_list_avg}, ms_ssim: {ms_ssim_list_avg}')
         print(log_info)
@@ -113,6 +129,7 @@ def test_one_epoch(test_loader,
                     model,
                     criterion,
                     config,
+                    logger,
                     test_data_name=None):
     # switch to evaluate mode
     model.eval()
@@ -159,5 +176,6 @@ def test_one_epoch(test_loader,
         log_info = (f'test of best model, loss: {loss_list_avg} , cbr: {cbr}, snr: {snr},'
                     f' psnr: {psnr_list_avg}, ms_ssim: {ms_ssim_list_avg}')
         print(log_info)
+        logger.info(log_info)
 
     return loss_list_avg, psnr_list_avg, ms_ssim_list_avg

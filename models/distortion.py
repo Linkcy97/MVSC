@@ -207,19 +207,18 @@ class MSE(torch.nn.Module):
 
 
 class Distortion(torch.nn.Module):
-    def __init__(self, args):
+    def __init__(self, distortion_metric='MSE',trainset='CIFAR10'):
         super(Distortion, self).__init__()
-        if args.distortion_metric == 'MSE':
+        if distortion_metric == 'MSE':
             self.dist = MSE(normalization=False)
-        elif args.distortion_metric == 'SSIM':
+        elif distortion_metric == 'SSIM':
             self.dist = SSIM()
-        elif args.distortion_metric == 'MS-SSIM':
-            if args.trainset == 'CIFAR10':
+        elif distortion_metric == 'MS-SSIM':
+            if trainset == 'CIFAR10':
                 self.dist = MS_SSIM(window_size=3, data_range=1., levels=4, channel=3).cuda()
             else:
                 self.dist = MS_SSIM(data_range=1., levels=4, channel=3).cuda()
         else:
-            args.logger.info("Unknown distortion type!")
             raise ValueError
 
     def forward(self, X, Y, normalization=False):

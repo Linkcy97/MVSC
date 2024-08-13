@@ -60,6 +60,7 @@ class Downsample(nn.Module):
     def __init__(self,
                  dim,
                  keep_dim=False,
+                 method = 'conv'
                  ):
         """
         Args:
@@ -69,16 +70,35 @@ class Downsample(nn.Module):
         """
 
         super().__init__()
+        self.method = method
         if keep_dim:
             dim_out = dim
         else:
             dim_out = 2 * dim
-        self.reduction = nn.Sequential(
-            nn.Conv2d(dim, dim_out, 3, 2, 1, bias=False),
-        )
+        if self.method == 'conv':
+            self.reduction = nn.Sequential(
+                nn.Conv2d(dim, dim_out, 3, 2, 1, bias=False),
+            )
+        else:
+            self.norm = nn.LayerNorm(4 * dim)
+            self.reduction = nn.Linear(4 * dim, 2 * dim, bias=False)
+            
 
     def forward(self, x):
-        x = self.reduction(x)         # bs,C,H,W    ---> bs,2*C,H/2,W/2
+        if self.method == 'conv':
+            x = self.reduction(x)         # bs,C,H,W    ---> bs,2*C,H/2,W/2
+        else:
+            B, C, H, W = x.shape
+            x = rearrange(x, 'b c h w -> b h w c')
+            x0 = x[:, 0::2, 0::2, :]  # B H/2 W/2 C
+            x1 = x[:, 1::2, 0::2, :]  # B H/2 W/2 C
+            x2 = x[:, 0::2, 1::2, :]  # B H/2 W/2 C
+            x3 = x[:, 1::2, 1::2, :]  # B H/2 W/2 C
+            x = torch.cat([x0, x1, x2, x3], -1)  # B H/2 W/2 4*C
+            x = x.view(B, H*W//4, 4 * C)  # B H/2*W/2 4*C
+            x = self.norm(x)
+            x = self.reduction(x)
+            x = rearrange(x, 'b (h w) c -> b c h w', h=H//2, w=W//2)
         return x
 
 class Upsample(nn.Module):
@@ -89,7 +109,7 @@ class Upsample(nn.Module):
     def __init__(self,
                  dim,
                  keep_dim=False,
-                 method='bilinear',
+                 method='PixelShuffle',
                  ):
         """
         Args:
@@ -99,8 +119,9 @@ class Upsample(nn.Module):
         """
 
         super().__init__()
+        self.method = method
         if keep_dim:
-            dim_out = dim
+            dim_out = 3
         else:
             dim_out = dim // 2
         if method == 'bilinear':
@@ -112,13 +133,28 @@ class Upsample(nn.Module):
         elif method == 'PixelShuffle':
             pre_upsample = nn.Conv2d(dim, dim_out * 4, 3, 1, 1, bias=False)
             upsample = nn.PixelShuffle(2)
-        self.expansion = nn.Sequential(
-            pre_upsample,
-            upsample
-        )
+        elif method == 'patch':
+            self.pre_upsample = nn.Sequential(
+                nn.LayerNorm(dim),
+                nn.Linear(dim, dim_out * 4, bias=False),
+            )
+            self.upsample = nn.PixelShuffle(2)
+        if method != 'patch':
+            self.expansion = nn.Sequential(
+                pre_upsample,
+                upsample
+            )
 
     def forward(self, x):
-        x = self.expansion(x)
+        if self.method != 'patch':
+            x = self.expansion(x)
+        else:
+            _, _, H, W = x.shape
+            x = rearrange(x, 'b c h w -> b (h w) c')
+            x = self.pre_upsample(x)
+            x = rearrange(x, 'b (h w) c -> b c h w', h=H, w=W)
+            x = self.upsample(x)
+
         return x
 
 
@@ -136,15 +172,17 @@ class PatchEmbed(nn.Module):
         # in_dim = 1
         super().__init__()
         self.proj = nn.Identity()
+        # self.conv_down = nn.Sequential(
+        #     nn.Conv2d(in_chans, in_dim, 3, 1, 1, bias=False),
+        #     nn.BatchNorm2d(in_dim, eps=1e-4),
+        #     nn.Sigmoid(),
+        #     nn.Conv2d(in_dim, dim, 3, 2, 1, bias=False),
+        #     nn.BatchNorm2d(dim, eps=1e-4),
+        #     nn.Sigmoid()
+        #     )
         self.conv_down = nn.Sequential(
-            nn.Conv2d(in_chans, in_dim, 3, 1, 1, bias=False),
-            nn.BatchNorm2d(in_dim, eps=1e-4),
-            nn.Sigmoid(),
-            nn.Conv2d(in_dim, dim, 3, 2, 1, bias=False),
-            nn.BatchNorm2d(dim, eps=1e-4),
-            nn.Sigmoid()
-            )
-
+                    nn.Conv2d(in_chans, dim, 2, 2)
+                    )
     def forward(self, x):
         x = self.proj(x)
         x = self.conv_down(x)
@@ -448,6 +486,7 @@ class MambaVisionLayer(nn.Module):
                  layer_scale=None,
                  layer_scale_conv=None,
                  transformer_blocks = [],
+                 net_type = 'encoder'
     ):
         """
         Args:
@@ -490,12 +529,12 @@ class MambaVisionLayer(nn.Module):
                                                drop=drop,
                                                attn_drop=attn_drop,
                                                drop_path=drop_path[i] if isinstance(drop_path, list) else drop_path,
-                                               layer_scale=layer_scale)
+                                               layer_scale=layer_scale,)
                                                for i in range(depth)])
             self.transformer_block = True
 
-        self.downsample = None if not downsample else Downsample(dim=dim)
-        self.upsample = None if not upsample else Upsample(dim=dim,method='convTranspose')
+        self.downsample = None if not downsample else Downsample(dim=dim,method='PixelShuffle')
+        self.upsample = None if not upsample else Upsample(dim=dim,method='patch')
         self.do_gt = False
         self.window_size = window_size
 
@@ -589,6 +628,7 @@ class MambaVisionEncoder(nn.Module):
                                      layer_scale=layer_scale,
                                      layer_scale_conv=layer_scale_conv,
                                      transformer_blocks=list(range(depths[i]//2+1, depths[i])) if depths[i]%2!=0 else list(range(depths[i]//2, depths[i])),
+                                     net_type = 'encoder'
                                      )
             self.levels.append(level)
         self.norm = nn.BatchNorm2d(num_features)
@@ -616,13 +656,13 @@ class MambaVisionEncoder(nn.Module):
         return {'rpb'}
 
     def forward_features(self, x):
-        x = self.patch_embed(x)       # (bs,3,H,W)   --> (bs,C,H/4,W/4)
+        x = self.patch_embed(x)       # (bs,3,H,W)   --> (bs,C,H/2,W/2)
         for level in self.levels:     # depth of MambaVisionLayer the first half of depth is conv
             x = level(x)
         x = self.norm(x)              # (bs,8*C,H/32,W/32)
         x = rearrange(x, 'b c h w -> b h w c')
         x = self.head_c(x)
-        x = self.tanh(x)
+        # x = self.tanh(x)
         x = rearrange(x, 'b h w c -> b c h w')
         return x
 
@@ -693,6 +733,7 @@ class MambaVisionDecoder(nn.Module):
                                      layer_scale=layer_scale,
                                      layer_scale_conv=layer_scale_conv,
                                      transformer_blocks=list(range(depths[i]//2+1, depths[i])) if depths[i]%2!=0 else list(range(depths[i]//2, depths[i])),
+                                     net_type = 'decoder'
                                      )
             self.levels.append(level)
         self.norm = nn.BatchNorm2d(num_features)

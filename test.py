@@ -42,7 +42,9 @@ def main(config):
     print('#----------Prepareing loss, opt, sch and amp----------#')
     criterion = config.criterion
 
-    config.work_dir = 'results/' + 'CIFAR10_50mb_1-13' + '/'
+    config.work_dir = 'results/' + 'CIFAR10_2024-08-12_21-29-06' + '/'
+    log_dir = os.path.join(config.work_dir, 'log')
+    logger = get_logger('train', log_dir)
 
     if os.path.exists(os.path.join(config.work_dir, 'checkpoints/best.pth')):
         print('#----------Testing----------#')
@@ -53,6 +55,7 @@ def main(config):
                 model,
                 criterion,
                 config,
+                logger
                 )
             
 

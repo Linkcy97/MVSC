@@ -132,6 +132,7 @@ def main(config):
         if loss < min_loss:
             torch.save(model.state_dict(), os.path.join(checkpoint_dir, 'best.pth'))
             print('----------Best Model Saved----------')
+            logger.info('----------Best Model Saved----------')
             min_loss = loss
             min_epoch = epoch
 
@@ -155,6 +156,7 @@ def main(config):
                 model,
                 criterion,
                 config,
+                logger,
             )
         os.rename(
             os.path.join(checkpoint_dir, 'best.pth'),

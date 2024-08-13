@@ -53,8 +53,8 @@ class setting_config:
     norm = False
     criterion = MSELoss()
     # multiple_snr = [-7]
-    multiple_snr = [-7, -4, 0, 4, 7, 30]
-    # multiple_snr = [1, 4, 7, 10, 13]
+    # multiple_snr = [-7, -4, 0, 4, 7, 30]
+    multiple_snr = [1, 4, 7, 10, 13]
 
     pretrained_path = './pre_trained/'
     num_classes = 10
@@ -84,7 +84,7 @@ class setting_config:
     epochs = 10
 
     work_dir = 'results/' +  datasets + '_' + datetime.now().strftime('%Y-%m-%d_%H-%M-%S') + '/'
-    # work_dir = 'results/' + 'CIFAR10_-7' + '/'
+    # work_dir = 'results/'  + 'CIFAR10_2024-08-07_09-39-02'
 
     val_interval = 30
     save_interval = 100
@@ -103,7 +103,7 @@ class setting_config:
         eps = 1e-10 # default: 1e-10 – term added to the denominator to improve numerical stability
         weight_decay = 0.05 # default: 0 – weight decay (L2 penalty)
     elif opt == 'Adam':
-        lr = 0.001 # default: 1e-3 – learning rate
+        lr = 0.0001 # default: 1e-3 – learning rate
         betas = (0.9, 0.999) # default: (0.9, 0.999) – coefficients used for computing running averages of gradient and its square
         eps = 1e-8 # default: 1e-8 – term added to the denominator to improve numerical stability 
         weight_decay = 0.0001 # default: 0 – weight decay (L2 penalty) 
