@@ -50,13 +50,13 @@ def train_one_epoch(train_loader,
         snr_a = (torch.round(snr) == g_snr).float().mean()
         cla_loss = cla_crit(cla, label)
         cla_a = (cla.argmax(1) == label).float().mean()
-        loss = snr_loss
+        loss = psnr_loss + 100*snr_loss + 100*cla_loss
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
         
 
-        losses.update(snr_loss.item())
+        losses.update(loss.item())
         psnrs.update(psnr_loss_cal(out,images).item())
         ms_ssims.update(1 - CalcuSSIM(images, out.clamp(0., 1.)).mean().item())   
         snrs.update(g_snr[0].item())     
