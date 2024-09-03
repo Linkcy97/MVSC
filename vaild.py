@@ -30,7 +30,7 @@ def main(config):
 
 
     print('#----------Preparing dataset----------#')
-    _, val_loader, test_loader = get_loader(config)
+    train_loader, val_loader, test_loader = get_loader(config)
 
     print('#----------Prepareing Model----------#')
     sc_model = MVSC(config)
@@ -39,9 +39,9 @@ def main(config):
     cl_model = ResNet8({'in_channels': 3, 'out_channels': 10, 'activation': 'relu'})
     cl_model = cl_model.cuda()
     print('#----------Prepareing loss, opt, sch and amp----------#')
-    criterion = config.psnr_crit
+    psnr_crit = config.psnr_crit
 
-    config.work_dir = 'results/' + 'CIFAR10_2024-08-29_16-35-43' + '/'
+    config.work_dir = 'results/' + 'CIFAR10_2024-09-03_11-00-40' + '/'
     log_dir = os.path.join(config.work_dir, 'log')
     logger = get_logger('train', log_dir)
 
@@ -50,15 +50,14 @@ def main(config):
         best_weight = torch.load(config.work_dir + 'checkpoints/best.pth')
         sc_model.load_state_dict(best_weight,strict=False)
         cl_model.load_state_dict(torch.load('classify.pth'))
-        loss, psnr, msssim = test_one_epoch(
-                val_loader,
-                test_loader,
+        psnr = val_one_epoch(
+                train_loader,
                 sc_model,
-                cl_model,
-                criterion,
-                config,
-                logger
-                )
+                psnr_crit,
+                1,
+                logger,
+                config
+            )
             
 
 

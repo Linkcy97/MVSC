@@ -46,8 +46,8 @@ def train_one_epoch(train_loader,
         out, cbr, g_snr, snr, cla = model(images)
         psnr_loss = psnr_crit(out*255., images*255.)
         g_snr = torch.full((snr.size(0),), g_snr).cuda()
-        snr_loss = snr_crit(snr, g_snr)
-        snr_a = (snr.argmax(1) == g_snr).float().mean()
+        snr_loss = snr_crit(snr, g_snr.float())
+        snr_a = (torch.round(snr) == g_snr).float().mean()
         cla_loss = cla_crit(cla, label)
         cla_a = (cla.argmax(1) == label).float().mean()
         loss = snr_loss
@@ -59,7 +59,7 @@ def train_one_epoch(train_loader,
         losses.update(snr_loss.item())
         psnrs.update(psnr_loss_cal(out,images).item())
         ms_ssims.update(1 - CalcuSSIM(images, out.clamp(0., 1.)).mean().item())   
-        snrs.update(config.multiple_snr[g_snr[0].item()])     
+        snrs.update(g_snr[0].item())     
         snr_acc.update(snr_a.item())
         cla_acc.update(cla_a.item())
 
@@ -117,11 +117,12 @@ def val_one_epoch(test_loader,
                 img = img.cuda(non_blocking=True).float()
                 label = label.cuda(non_blocking=True)
                 out, cbr, g_snr, snr, cla = model(img,multiple_snr[i])
+                g_snr = torch.full((snr.size(0),), g_snr).cuda()
                 loss = criterion(out*255., img*255.)
 
                 loss_list[i].append(loss.item())
                 psnr_list[i].append(psnr_loss(out, img).item())
-                snr_acc_list[i].append((snr.argmax(1) == g_snr).float().mean().item())
+                snr_acc_list[i].append((torch.round(snr) == g_snr).float().mean().item())
                 cla_acc_list[i].append((cla.argmax(1) == label).float().mean().item())
                 ms_ssim_list[i].append(1 - CalcuSSIM(img, out.clamp(0., 1.)).mean().item())
 
@@ -131,7 +132,7 @@ def val_one_epoch(test_loader,
         snr_acc_list_avg = [round(np.mean(sublist),3) if sublist else 0 for sublist in snr_acc_list]
         cla_acc_list_avg = [round(np.mean(sublist),3) if sublist else 0 for sublist in cla_acc_list]
 
-        log_info = (f'val epoch: {epoch}, loss: {loss_list_avg}, cbr: {cbr}, snr: {config.multiple_snr[g_snr]},'
+        log_info = (f'val epoch: {epoch}, loss: {loss_list_avg}, cbr: {cbr}, snr: {g_snr[0].item()},'
                     f'psnr: {psnr_list_avg},avg{np.mean(psnr_list_avg)}, ms_ssim: {ms_ssim_list_avg}'
                     f'snr_acc: {snr_acc_list_avg}, cla_acc: {cla_acc_list_avg}')
         print(log_info)

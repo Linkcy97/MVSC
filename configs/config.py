@@ -52,7 +52,7 @@ class setting_config:
 
     norm = False
     psnr_crit = MSELoss()
-    snr_crit = CrossEntropyLoss()
+    snr_crit = MSELoss()
     cla_crit = CrossEntropyLoss()
     # multiple_snr = [-7]
     # multiple_snr = [-7, -4, 0, 4, 7, 30]

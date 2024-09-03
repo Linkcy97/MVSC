@@ -237,16 +237,13 @@ class SnrEstimate(nn.Module):
         self.maxpool = nn.MaxPool2d(2, 2)
         self.resnet1 = nn.Sequential(
             nn.Conv2d(dim*16, dim*16, (1,3), 1, 'same'),
-            nn.BatchNorm2d(dim*16),
+            # nn.BatchNorm2d(dim*16),
             nn.LeakyReLU(),
-            nn.Dropout(0.5),
             nn.Conv2d(dim*16, dim*16, (1,3), 1, 'same'),
-            nn.BatchNorm2d(dim*16),
-            nn.LeakyReLU(),
-            nn.Dropout(0.5))
+            # nn.BatchNorm2d(dim*16),
+            nn.LeakyReLU())
         self.avgpool = nn.AdaptiveAvgPool2d((1,32))
-        self.fc = nn.Linear(16*32, 5)
-        self.softmax = nn.Softmax(dim=1)
+        self.fc = nn.Linear(16*32, 1)
 
     def forward(self, x):
         x = self.conv1(x)
@@ -256,7 +253,6 @@ class SnrEstimate(nn.Module):
         x = self.avgpool(x)
         x = rearrange(x, 'b c h w -> b (h c w)')
         x = self.fc(x)
-        x = self.softmax(x)
         return x
     
 class ConvBlock(nn.Module):
@@ -889,7 +885,7 @@ class MVSC(nn.Module):
             choice = random.randint(0, len(self.multiple_snr) - 1)
             g_snr = self.multiple_snr[choice]
         # ones = torch.ones_like(semantic_feature)
-        x_noise = self.channel(semantic_feature,g_snr)
+        x_noise = self.channel(semantic_feature, g_snr)
         # x_noise1 = x_noise - ones
         x_noise1 = rearrange(x_noise, 'b hw c -> b (hw c)')
         x_noise1 = rearrange(x_noise1, 'b (c h w) -> b c h w', c=1,h=2)
@@ -901,6 +897,6 @@ class MVSC(nn.Module):
         # x_de = self.cnn_denoise(x_noise)
         # x_ded = x_noise + x_de
         x, cla = self.decoder(x_noise,x_h)
-        return x, CBR, choice, snr, cla
+        return x, CBR, g_snr, snr, cla
 
 
