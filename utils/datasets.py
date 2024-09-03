@@ -148,7 +148,7 @@ def get_loader(config):
     
     if config.datasets == 'CIFAR10':
         val_loader = data.DataLoader(dataset=val_dataset,
-                                            batch_size=512,
+                                            batch_size=128,
                                             shuffle=False)
         test_loader = data.DataLoader(dataset=test_dataset,
                                   batch_size=1,

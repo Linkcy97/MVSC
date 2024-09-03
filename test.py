@@ -8,11 +8,9 @@
 
 import os
 import torch
-from torch.utils.data import DataLoader
-from torchvision import transforms, datasets
 from models.mamba_vision import MVSC
 from models.distortion import *
-import argparse
+from classify_net import ResNet8
 from engine import *
 import os
 from utils.datasets import *
@@ -32,27 +30,31 @@ def main(config):
 
 
     print('#----------Preparing dataset----------#')
-    _, _, test_loader = get_loader(config)
+    _, val_loader, test_loader = get_loader(config)
 
     print('#----------Prepareing Model----------#')
-    model = MVSC(config)
-    model = model.cuda()
+    sc_model = MVSC(config)
+    sc_model = sc_model.cuda()
 
-
+    cl_model = ResNet8({'in_channels': 3, 'out_channels': 10, 'activation': 'relu'})
+    cl_model = cl_model.cuda()
     print('#----------Prepareing loss, opt, sch and amp----------#')
-    criterion = config.criterion
+    criterion = config.psnr_crit
 
-    config.work_dir = 'results/' + 'CIFAR10_2024-08-12_21-29-06' + '/'
+    config.work_dir = 'results/' + 'CIFAR10_2024-09-03_08-52-45' + '/'
     log_dir = os.path.join(config.work_dir, 'log')
     logger = get_logger('train', log_dir)
 
     if os.path.exists(os.path.join(config.work_dir, 'checkpoints/best.pth')):
         print('#----------Testing----------#')
         best_weight = torch.load(config.work_dir + 'checkpoints/best.pth')
-        model.load_state_dict(best_weight,strict=False)
+        sc_model.load_state_dict(best_weight,strict=False)
+        cl_model.load_state_dict(torch.load('classify.pth'))
         loss, psnr, msssim = test_one_epoch(
+                val_loader,
                 test_loader,
-                model,
+                sc_model,
+                cl_model,
                 criterion,
                 config,
                 logger

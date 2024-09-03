@@ -2,16 +2,12 @@ import sys
 import os
 # 获取主程序文件的目录
 main_dir = os.path.dirname(os.path.abspath(__file__))
-
 # 将主程序目录添加到 sys.path
 if main_dir not in sys.path:
     sys.path.append(main_dir)
-
 import torch
-from torch.utils.data import DataLoader
-from torchvision import transforms, datasets
+from classify_net import ResNet8
 from utils.datasets import get_loader
-import timm
 from tensorboardX import SummaryWriter
 from models.mamba_vision import MVSC
 from engine import *
@@ -60,7 +56,9 @@ def main(config):
     print('#----------Prepareing Model----------#')
     model = MVSC(config)
     model = model.cuda()
-
+    cl_model = ResNet8({'in_channels': 3, 'out_channels': 10, 'activation': 'relu'})
+    cl_model = cl_model.cuda()
+    cl_model.load_state_dict(torch.load('classify.pth'))
     cal_params_flops(model, config.input_size_h, logger)
 
 
@@ -68,7 +66,9 @@ def main(config):
 
 
     print('#----------Prepareing loss, opt, sch and amp----------#')
-    criterion = config.criterion
+    psnr_crit = config.psnr_crit
+    snr_crit = config.snr_crit
+    cla_crit = config.cla_crit
     optimizer = get_optimizer(config, model)
     scheduler = get_scheduler(config, optimizer)
 
@@ -77,7 +77,7 @@ def main(config):
 
 
     print('#----------Set other params----------#')
-    min_loss = 9999
+    min_psnr = 0
     start_epoch = 1
     min_epoch = 1
 
@@ -110,8 +110,10 @@ def main(config):
         step = train_one_epoch(
             train_loader,
             model,
-            criterion,
             optimizer,
+            psnr_crit,
+            snr_crit,
+            cla_crit,
             scheduler,
             epoch,
             step,
@@ -120,28 +122,28 @@ def main(config):
             writer
         )
 
-        loss = val_one_epoch(
+        psnr = val_one_epoch(
                 val_loader,
                 model,
-                criterion,
+                psnr_crit,
                 epoch,
                 logger,
                 config
             )
 
-        if loss < min_loss:
+        if psnr > min_psnr:
             torch.save(model.state_dict(), os.path.join(checkpoint_dir, 'best.pth'))
             print('----------Best Model Saved----------')
             logger.info('----------Best Model Saved----------')
-            min_loss = loss
+            min_psnr = psnr
             min_epoch = epoch
 
         torch.save(
             {
                 'epoch': epoch,
-                'min_loss': min_loss,
+                'min_psnr': min_psnr,
                 'min_epoch': min_epoch,
-                'loss': loss,
+                'psnr': psnr,
                 'model_state_dict': model.state_dict(),
                 'optimizer_state_dict': optimizer.state_dict(),
                 'scheduler_state_dict': scheduler.state_dict(),
@@ -152,16 +154,19 @@ def main(config):
         best_weight = torch.load(config.work_dir + 'checkpoints/best.pth', map_location=torch.device('cpu'))
         model.load_state_dict(best_weight)
         loss = test_one_epoch(
-                test_loader,
+                val_loader,
+                val_loader,
                 model,
-                criterion,
+                cl_model,
+                psnr_crit,
                 config,
-                logger,
+                logger
             )
         os.rename(
             os.path.join(checkpoint_dir, 'best.pth'),
-            os.path.join(checkpoint_dir, f'best-epoch{min_epoch}-loss{min_loss:.4f}.pth')
+            os.path.join(checkpoint_dir, f'best-epoch{min_epoch}-psnr{min_psnr:.4f}.pth')
         )      
+        logger.info(f'best-epoch{min_epoch}-psnr{min_psnr:.4f}.pth')
 
 
 if __name__ == '__main__':

@@ -7,7 +7,7 @@
 # and any modifications thereto.  Any use, reproduction, disclosure or
 # distribution of this software and related documentation without an express
 # license agreement from NVIDIA CORPORATION is strictly prohibited.
-from random import choice
+import random
 import torch
 import torch.nn as nn
 import math
@@ -206,7 +206,7 @@ class PatchUnembed(nn.Module):
         self.conv_up = nn.Sequential(
             nn.ConvTranspose2d(dim, out_dim, 3, 2, 1, output_padding=1, bias=False),
             nn.BatchNorm2d(out_dim),
-            nn.Sigmoid(),
+            nn.ReLU(),
             nn.Conv2d(out_dim, out_chans, 3, 1, 1, bias=False),
             nn.BatchNorm2d(out_chans),
             nn.Sigmoid()
@@ -217,7 +217,48 @@ class PatchUnembed(nn.Module):
         x = self.proj(x)
         return x
     
+class DenoiseBlock(nn.Module):
+    def __init__(self, dim):
+        super().__init__()
+        self.cnn_denoise = nn.Conv2d(dim, dim, 3, 1, 1)
+        self.norm = nn.BatchNorm2d(dim)
+        self.act = nn.Sigmoid()
 
+    def forward(self, x):
+        noise = self.cnn_denoise(x)
+        noise = self.norm(noise)
+        noise = self.act(noise)
+        return x + noise
+
+class SnrEstimate(nn.Module):
+    def __init__(self, dim):
+        super().__init__()
+        self.conv1 = nn.Conv2d(dim, dim*16, 3, 1, 1)
+        self.maxpool = nn.MaxPool2d(2, 2)
+        self.resnet1 = nn.Sequential(
+            nn.Conv2d(dim*16, dim*16, (1,3), 1, 'same'),
+            nn.BatchNorm2d(dim*16),
+            nn.LeakyReLU(),
+            nn.Dropout(0.5),
+            nn.Conv2d(dim*16, dim*16, (1,3), 1, 'same'),
+            nn.BatchNorm2d(dim*16),
+            nn.LeakyReLU(),
+            nn.Dropout(0.5))
+        self.avgpool = nn.AdaptiveAvgPool2d((1,32))
+        self.fc = nn.Linear(16*32, 5)
+        self.softmax = nn.Softmax(dim=1)
+
+    def forward(self, x):
+        x = self.conv1(x)
+        x = self.maxpool(x)
+        x1 = self.resnet1(x)
+        x = x + x1
+        x = self.avgpool(x)
+        x = rearrange(x, 'b c h w -> b (h c w)')
+        x = self.fc(x)
+        x = self.softmax(x)
+        return x
+    
 class ConvBlock(nn.Module):
 
     def __init__(self, dim,
@@ -660,11 +701,12 @@ class MambaVisionEncoder(nn.Module):
         for level in self.levels:     # depth of MambaVisionLayer the first half of depth is conv
             x = level(x)
         x = self.norm(x)              # (bs,8*C,H/32,W/32)
-        x = rearrange(x, 'b c h w -> b h w c')
+        x_h = x.shape[2]
+        x = rearrange(x, 'b c h w -> b (h w) c')
         x = self.head_c(x)
         # x = self.tanh(x)
-        x = rearrange(x, 'b h w c -> b c h w')
-        return x
+        # x = rearrange(x, 'b (h w) c -> b c h w', h=x_h)
+        return x,x_h
 
     def forward(self, x):
         x = self.forward_features(x)
@@ -718,6 +760,8 @@ class MambaVisionDecoder(nn.Module):
         self.levels = nn.ModuleList()
         for i in range(len(depths) - 1, -1, -1):
             conv = True if (i < int(len(depths)/2)) else False
+            denosie = DenoiseBlock(dim=int(dim * 2 ** i))
+            self.levels.append(denosie)
             level = MambaVisionLayer(dim=int(dim * 2 ** i),
                                      depth=depths[i],
                                      num_heads=num_heads[i],
@@ -738,6 +782,21 @@ class MambaVisionDecoder(nn.Module):
             self.levels.append(level)
         self.norm = nn.BatchNorm2d(num_features)
         self.head_c = nn.Linear(C, int(dim * 2 ** (len(depths) - 1)))
+        self.classfiy_net = nn.Sequential(
+            nn.Conv2d(dim, dim//2, 4, 4),
+            nn.BatchNorm2d(dim//2),
+            nn.ReLU(),
+            nn.Conv2d(dim//2, 10, 4, 4),
+            nn.BatchNorm2d(10),
+            nn.Sigmoid())
+        # self.snr_net = nn.Sequential(
+        #     nn.Conv2d(dim, dim//2, 4, 4),
+        #     nn.BatchNorm2d(dim//2),
+        #     nn.ReLU(),
+        #     nn.Conv2d(dim//2, 5, 4, 4),
+        #     nn.BatchNorm2d(5),
+        #     nn.Sigmoid())
+
         self.apply(self._init_weights)
 
     def _init_weights(self, m):
@@ -759,20 +818,26 @@ class MambaVisionDecoder(nn.Module):
     def no_weight_decay_keywords(self):
         return {'rpb'}
 
-    def forward_features(self, x):
-        x = rearrange(x, 'b c h w -> b h w c')
+    def forward_features(self, x, x_h):
+        # x_h = x.shape[2]
+        # x = rearrange(x, 'b c h w -> b (h w) c')
         x = self.head_c(x)
-        x = rearrange(x, 'b h w c -> b c h w')
+        x = rearrange(x, 'b (h w) c -> b c h w', h=x_h)
         for level in self.levels:     
             x = level(x)
+
         x = self.norm(x) 
+        cla = self.classfiy_net(x)
+        cla = rearrange(cla, 'b c h w -> b (h w c)')
+        # snr = self.snr_net(x)
+        # snr = rearrange(snr, 'b c h w -> b (h w c)')
         x =  self.patch_unembed(x)
 
-        return x
+        return x, cla
 
-    def forward(self, x):
-        x = self.forward_features(x)
-        return x
+    def forward(self, x, x_h):
+        x, cla = self.forward_features(x, x_h)
+        return x, cla
 
 
 class MVSC(nn.Module):
@@ -800,21 +865,42 @@ class MVSC(nn.Module):
                                             drop_path_rate=config.model_config['drop_path_rate'],
                                           )
         self.channel = Channel(config)
-        # self.multiple_snr = [1, 4, 7, 10, 13]
+        # self.multiple_snr = [1, 4, 7, 10, 13]    nn.Conv2d(8, 8, 3, 1, 1)
+        self.cnn_denoise = nn.Sequential(
+            nn.Conv2d(8, 16, 3, 1, 1),
+            nn.BatchNorm2d(16),
+            nn.Sigmoid(),
+            nn.Conv2d(16, 8, 3, 1, 1),
+            nn.BatchNorm2d(8),
+            nn.Sigmoid()
+        )
+
+        self.snr_est = SnrEstimate(1)
+                                     
         self.multiple_snr = config.multiple_snr
 
     def forward(self, x, given_snr=False):
-        semantic_feature = self.encoder(x)
+        semantic_feature, x_h = self.encoder(x)
         CBR = semantic_feature.numel() / 2 / x.numel()
-        p_h = semantic_feature.shape[2]
-        semantic_feature = rearrange(semantic_feature, 'b c h w -> b (h w) c')
         if given_snr:
-            snr = given_snr
+            g_snr = given_snr
+            choice = self.multiple_snr.index(g_snr)
         else:
-            snr = choice(self.multiple_snr)
-        x_noise = self.channel(semantic_feature,snr)
-        x_noise = rearrange(x_noise, 'b (h w) c -> b c h w',h=p_h)
-        x = self.decoder(x_noise)
-        return x, CBR, snr
+            choice = random.randint(0, len(self.multiple_snr) - 1)
+            g_snr = self.multiple_snr[choice]
+        # ones = torch.ones_like(semantic_feature)
+        x_noise = self.channel(semantic_feature,g_snr)
+        # x_noise1 = x_noise - ones
+        x_noise1 = rearrange(x_noise, 'b hw c -> b (hw c)')
+        x_noise1 = rearrange(x_noise1, 'b (c h w) -> b c h w', c=1,h=2)
+
+        snr = self.snr_est(x_noise1)
+        # x_ded = self.liner_denoise(x_noise)
+        # x_ded = x_noise + x_de
+        # x_ded = rearrange(x_ded, 'b (h w) c -> b c h w',h=x_h)
+        # x_de = self.cnn_denoise(x_noise)
+        # x_ded = x_noise + x_de
+        x, cla = self.decoder(x_noise,x_h)
+        return x, CBR, choice, snr, cla
 
 

@@ -1,5 +1,5 @@
 from torchvision import transforms
-from torch.nn import MSELoss
+from torch.nn import MSELoss,CrossEntropyLoss
 from utils import *
 
 from datetime import datetime
@@ -51,7 +51,9 @@ class setting_config:
 
 
     norm = False
-    criterion = MSELoss()
+    psnr_crit = MSELoss()
+    snr_crit = CrossEntropyLoss()
+    cla_crit = CrossEntropyLoss()
     # multiple_snr = [-7]
     # multiple_snr = [-7, -4, 0, 4, 7, 30]
     multiple_snr = [1, 4, 7, 10, 13]

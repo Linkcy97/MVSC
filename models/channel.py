@@ -32,9 +32,8 @@ class Channel(nn.Module):
         noise = noise_real + 1j * noise_imag
         h = torch.sqrt(torch.normal(mean=0.0, std=1, size=np.shape(input_layer)) ** 2
                        + torch.normal(mean=0.0, std=1, size=np.shape(input_layer)) ** 2) / np.sqrt(2)
-        if self.config.CUDA:
-            noise = noise.to(input_layer.get_device())
-            h = h.to(input_layer.get_device())
+        noise = noise.to(input_layer.get_device())
+        h = h.to(input_layer.get_device())
         return input_layer * h + noise
 
 
