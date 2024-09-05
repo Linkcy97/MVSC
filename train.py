@@ -77,7 +77,7 @@ def main(config):
 
 
     print('#----------Set other params----------#')
-    min_psnr = 0
+    max_score = 0
     start_epoch = 1
     min_epoch = 1
 
@@ -122,28 +122,29 @@ def main(config):
             writer
         )
 
-        psnr = val_one_epoch(
+        score = val_one_epoch(
                 val_loader,
                 model,
                 psnr_crit,
+                snr_crit,
                 epoch,
                 logger,
                 config
             )
 
-        if psnr > min_psnr:
+        if score > max_score:
             torch.save(model.state_dict(), os.path.join(checkpoint_dir, 'best.pth'))
             print('----------Best Model Saved----------')
             logger.info('----------Best Model Saved----------')
-            min_psnr = psnr
+            max_score = score
             min_epoch = epoch
 
         torch.save(
             {
                 'epoch': epoch,
-                'min_psnr': min_psnr,
+                'max_score': max_score,
                 'min_epoch': min_epoch,
-                'psnr': psnr,
+                'score': score,
                 'model_state_dict': model.state_dict(),
                 'optimizer_state_dict': optimizer.state_dict(),
                 'scheduler_state_dict': scheduler.state_dict(),
@@ -164,9 +165,9 @@ def main(config):
             )
         os.rename(
             os.path.join(checkpoint_dir, 'best.pth'),
-            os.path.join(checkpoint_dir, f'best-epoch{min_epoch}-psnr{min_psnr:.4f}.pth')
+            os.path.join(checkpoint_dir, f'best-epoch{min_epoch}-psnr{min_loss:.4f}.pth')
         )      
-        logger.info(f'best-epoch{min_epoch}-psnr{min_psnr:.4f}.pth')
+        logger.info(f'best-epoch{min_epoch}-psnr{min_loss:.4f}.pth')
 
 
 if __name__ == '__main__':

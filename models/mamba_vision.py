@@ -777,7 +777,7 @@ class MambaVisionDecoder(nn.Module):
                                      )
             self.levels.append(level)
         self.norm = nn.BatchNorm2d(num_features)
-        self.head_c = nn.Linear(C, int(dim * 2 ** (len(depths) - 1)))
+        self.head_c = nn.Linear(2*C, int(dim * 2 ** (len(depths) - 1)))
         self.classfiy_net = nn.Sequential(
             nn.Conv2d(dim, dim//2, 4, 4),
             nn.BatchNorm2d(dim//2),
@@ -864,16 +864,43 @@ class MVSC(nn.Module):
         # self.multiple_snr = [1, 4, 7, 10, 13]    nn.Conv2d(8, 8, 3, 1, 1)
         self.cnn_denoise = nn.Sequential(
             nn.Conv2d(8, 16, 3, 1, 1),
-            nn.BatchNorm2d(16),
-            nn.Sigmoid(),
+            nn.LeakyReLU(),
             nn.Conv2d(16, 8, 3, 1, 1),
-            nn.BatchNorm2d(8),
-            nn.Sigmoid()
+            nn.LeakyReLU()
         )
 
         self.snr_est = SnrEstimate(1)
                                      
         self.multiple_snr = config.multiple_snr
+
+
+    def freeze_encoder(self):
+        for param in self.encoder.parameters():
+            param.requires_grad = False
+
+
+    def unfreeze_encoder(self):
+        for param in self.encoder.parameters():
+            param.requires_grad = True
+
+
+    def freeze_decoder(self):
+        for param in self.decoder.parameters():
+            param.requires_grad = False
+
+
+    def unfreeze_decoder(self):
+        for param in self.decoder.parameters():
+            param.requires_grad = True
+
+    def freeze_snr(self):
+        for param in self.cnn_denoise.parameters():
+            param.requires_grad = False   
+
+    def unfreeze_snr(self):
+        for param in self.cnn_denoise.parameters():
+            param.requires_grad = True   
+
 
     def forward(self, x, given_snr=False):
         semantic_feature, x_h = self.encoder(x)
@@ -887,16 +914,19 @@ class MVSC(nn.Module):
         # ones = torch.ones_like(semantic_feature)
         x_noise = self.channel(semantic_feature, g_snr)
         # x_noise1 = x_noise - ones
-        x_noise1 = rearrange(x_noise, 'b hw c -> b (hw c)')
-        x_noise1 = rearrange(x_noise1, 'b (c h w) -> b c h w', c=1,h=2)
+        # x_noise1 = rearrange(x_noise, 'b hw c -> b (hw c)')
+        # x_noise1 = rearrange(x_noise1, 'b (c h w) -> b c h w', c=1,h=2)
 
-        snr = self.snr_est(x_noise1)
+        # snr = self.snr_est(x_noise1)
         # x_ded = self.liner_denoise(x_noise)
         # x_ded = x_noise + x_de
-        # x_ded = rearrange(x_ded, 'b (h w) c -> b c h w',h=x_h)
-        # x_de = self.cnn_denoise(x_noise)
+        x_noise = rearrange(x_noise, 'b (h w) c -> b c h w',h=x_h)
+        noise = self.cnn_denoise(x_noise)
+        x_signal = x_noise + noise
+        snr =10*torch.log10(torch.mean(x_signal**2, dim=[1, 2, 3]) / torch.mean(noise**2, dim=[1, 2, 3]))
         # x_ded = x_noise + x_de
-        x, cla = self.decoder(x_noise,x_h)
+        x_noise = rearrange(x_noise, 'b c h w -> b (h w) c')
+        noise = rearrange(noise, 'b c h w -> b (h w) c')
+        x_denoise = torch.cat((x_noise, noise), dim=2)
+        x, cla = self.decoder(x_denoise,x_h)
         return x, CBR, g_snr, snr, cla
-
-

@@ -34,6 +34,18 @@ def train_one_epoch(train_loader,
 
     losses, psnrs, ms_ssims, snrs, snr_acc, cla_acc = [AverageMeter() for _ in range(6)]
     metrics = [losses, psnrs, ms_ssims, snrs, snr_acc, cla_acc]
+
+    if epoch < 3:
+        model.freeze_snr()
+    else:
+        model.freeze_encoder()
+        if epoch % 2 == 0:
+            model.freeze_decoder()
+            model.unfreeze_snr()
+        else:
+            model.freeze_snr()
+            model.unfreeze_decoder()
+
     for iter, data in enumerate(train_loader):
         step += iter
         optimizer.zero_grad()
@@ -50,15 +62,22 @@ def train_one_epoch(train_loader,
         snr_a = (torch.round(snr) == g_snr).float().mean()
         cla_loss = cla_crit(cla, label)
         cla_a = (cla.argmax(1) == label).float().mean()
-        loss = psnr_loss + 100*snr_loss + 100*cla_loss
+        if epoch < 3:
+            loss = psnr_loss
+        else:
+            if epoch % 2 == 0:
+                loss = 100*snr_loss 
+            else:
+                loss = psnr_loss
+
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
         
 
         losses.update(loss.item())
-        psnrs.update(psnr_loss_cal(out,images).item())
         ms_ssims.update(1 - CalcuSSIM(images, out.clamp(0., 1.)).mean().item())   
+        psnrs.update(psnr_loss_cal(out,images).item())
         snrs.update(g_snr[0].item())     
         snr_acc.update(snr_a.item())
         cla_acc.update(cla_a.item())
@@ -89,7 +108,8 @@ def train_one_epoch(train_loader,
 
 def val_one_epoch(test_loader,
                     model,
-                    criterion, 
+                    psnr_crit, 
+                    snr_crit,
                     epoch, 
                     logger,
                     config):
@@ -101,7 +121,7 @@ def val_one_epoch(test_loader,
                                         [[] for _ in range(len(multiple_snr))], \
                                         [[] for _ in range(len(multiple_snr))], \
                                         [[] for _ in range(len(multiple_snr))]
-    psnr_loss = MSE().calculate_psnr
+    psnr_loss_cal = MSE().calculate_psnr
     if config.datasets == 'CIFAR10':
         CalcuSSIM = MS_SSIM(window_size=3, data_range=1., levels=4, channel=3).cuda()
     else:
@@ -118,10 +138,18 @@ def val_one_epoch(test_loader,
                 label = label.cuda(non_blocking=True)
                 out, cbr, g_snr, snr, cla = model(img,multiple_snr[i])
                 g_snr = torch.full((snr.size(0),), g_snr).cuda()
-                loss = criterion(out*255., img*255.)
+                snr_loss = snr_crit(snr, g_snr.float())
+                psnr_loss = psnr_crit(out*255., img*255.)
+                if epoch < 3:
+                    loss = psnr_loss
+                else:
+                    if epoch % 2 == 0:
+                        loss = 100*snr_loss 
+                    else:
+                        loss = psnr_loss
 
                 loss_list[i].append(loss.item())
-                psnr_list[i].append(psnr_loss(out, img).item())
+                psnr_list[i].append(psnr_loss_cal(out, img).item())
                 snr_acc_list[i].append((torch.round(snr) == g_snr).float().mean().item())
                 cla_acc_list[i].append((cla.argmax(1) == label).float().mean().item())
                 ms_ssim_list[i].append(1 - CalcuSSIM(img, out.clamp(0., 1.)).mean().item())
@@ -133,12 +161,12 @@ def val_one_epoch(test_loader,
         cla_acc_list_avg = [round(np.mean(sublist),3) if sublist else 0 for sublist in cla_acc_list]
 
         log_info = (f'val epoch: {epoch}, loss: {loss_list_avg}, cbr: {cbr}, snr: {g_snr[0].item()},'
-                    f'psnr: {psnr_list_avg},avg{np.mean(psnr_list_avg)}, ms_ssim: {ms_ssim_list_avg}'
-                    f'snr_acc: {snr_acc_list_avg}, cla_acc: {cla_acc_list_avg}')
+                    f'psnr: {psnr_list_avg}, avg{np.mean(psnr_list_avg)}, ms_ssim: {ms_ssim_list_avg}'
+                    f'snr_acc: {snr_acc_list_avg}, cla_acc: {cla_acc_list_avg}, score:{np.mean(psnr_list_avg) + np.mean(snr_acc_list_avg)}')
         print(log_info)
         logger.info(log_info)
     
-    return np.mean(psnr_list_avg)
+    return np.mean(psnr_list_avg) + np.mean(snr_acc_list_avg)
 
 
 def test_one_epoch( val_loader,
