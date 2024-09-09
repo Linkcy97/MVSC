@@ -1,4 +1,4 @@
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, random_split
 from PIL import Image
 # import cv2
 import os
@@ -124,12 +124,13 @@ def get_loader(config):
                                  transform=transform_train,
                                  download=False)
         
-        val_dataset = dataset_(root=config.val_data_dir,
+        train_dataset, val_dataset = random_split(train_dataset, [45000, 5000])
+        test_dataset = dataset_(root=config.val_data_dir,
                                 train=False,
                                 transform=transform_test,
                                 download=False)
 
-        test_dataset = Datasets(config.test_data_dir)
+        # test_dataset = Datasets(config.test_data_dir)
         train_dataset = CIFAR10(train_dataset)
 
     else:
@@ -151,7 +152,7 @@ def get_loader(config):
                                             batch_size=512,
                                             shuffle=False)
         test_loader = data.DataLoader(dataset=test_dataset,
-                                  batch_size=1,
+                                  batch_size=512,
                                   shuffle=False)
 
     elif config.datasets == 'DIV2K':

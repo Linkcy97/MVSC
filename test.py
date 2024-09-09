@@ -36,29 +36,23 @@ def main(config):
     sc_model = MVSC(config)
     sc_model = sc_model.cuda()
 
-    cl_model = ResNet8({'in_channels': 3, 'out_channels': 10, 'activation': 'relu'})
-    cl_model = cl_model.cuda()
     print('#----------Prepareing loss, opt, sch and amp----------#')
     criterion = config.psnr_crit
 
-    config.work_dir = 'results/' + 'CIFAR10_2024-08-29_16-35-43' + '/'
+    config.work_dir = 'results/' + 'epoch100-psnr-snr' + '/'
     log_dir = os.path.join(config.work_dir, 'log')
     logger = get_logger('train', log_dir)
 
-    if os.path.exists(os.path.join(config.work_dir, 'checkpoints/best.pth')):
+    if os.path.exists(os.path.join(config.work_dir, 'checkpoints/best-epoch93-max_score30.0810.pth')):
         print('#----------Testing----------#')
-        best_weight = torch.load(config.work_dir + 'checkpoints/best.pth')
+        best_weight = torch.load(config.work_dir + 'checkpoints/best-epoch93-max_score30.0810.pth')
         sc_model.load_state_dict(best_weight,strict=False)
-        cl_model.load_state_dict(torch.load('classify.pth'))
-        loss, psnr, msssim = test_one_epoch(
-                val_loader,
+        score = test_one_epoch(
                 test_loader,
                 sc_model,
-                cl_model,
                 criterion,
                 config,
-                logger
-                )
+                logger)
             
 
 

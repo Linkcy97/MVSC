@@ -34,17 +34,19 @@ def train_one_epoch(train_loader,
 
     losses, psnrs, ms_ssims, snrs, snr_acc, cla_acc = [AverageMeter() for _ in range(6)]
     metrics = [losses, psnrs, ms_ssims, snrs, snr_acc, cla_acc]
-
-    if epoch < 3:
+    # model.freeze_snr()
+    if epoch < 2:
         model.freeze_snr()
     else:
-        model.freeze_encoder()
-        if epoch % 2 == 0:
-            model.freeze_decoder()
+        if (epoch) % 2 == 0:
+            model.unfreeze_encoder()
             model.unfreeze_snr()
+            model.freeze_decoder()
         else:
+            model.freeze_encoder()
             model.freeze_snr()
             model.unfreeze_decoder()
+
 
     for iter, data in enumerate(train_loader):
         step += iter
@@ -62,11 +64,12 @@ def train_one_epoch(train_loader,
         snr_a = (torch.round(snr) == g_snr).float().mean()
         cla_loss = cla_crit(cla, label)
         cla_a = (cla.argmax(1) == label).float().mean()
-        if epoch < 3:
+        # loss = psnr_loss
+        if epoch < 2:
             loss = psnr_loss
         else:
-            if epoch % 2 == 0:
-                loss = 100*snr_loss 
+            if (epoch ) % 2  == 0:
+                loss = 100*snr_loss
             else:
                 loss = psnr_loss
 
@@ -162,14 +165,73 @@ def val_one_epoch(test_loader,
 
         log_info = (f'val epoch: {epoch}, loss: {loss_list_avg}, cbr: {cbr}, snr: {g_snr[0].item()},'
                     f'psnr: {psnr_list_avg}, avg{np.mean(psnr_list_avg)}, ms_ssim: {ms_ssim_list_avg}'
-                    f'snr_acc: {snr_acc_list_avg}, cla_acc: {cla_acc_list_avg}, score:{np.mean(psnr_list_avg) + np.mean(snr_acc_list_avg)}')
+                    f'snr_acc: {snr_acc_list_avg}, cla_acc: {cla_acc_list_avg}, score:{np.mean(psnr_list_avg) + 10*np.mean(snr_acc_list_avg)}')
         print(log_info)
         logger.info(log_info)
     
-    return np.mean(psnr_list_avg) + np.mean(snr_acc_list_avg)
+    return np.mean(psnr_list_avg) + 10*np.mean(snr_acc_list_avg)
 
 
-def test_one_epoch( val_loader,
+def test_one_epoch( test_loader,
+                    sc_model,
+                    criterion,
+                    config,
+                    logger,
+                    test_data_name=None):
+    # switch to evaluate mode
+    sc_model.eval()
+    multiple_snr = config.multiple_snr
+    loss_list, psnr_list, ms_ssim_list, time_list, acc_list, snr_acc_list, cla_acc_list = \
+            [[] for _ in range(len(multiple_snr))], \
+            [[] for _ in range(len(multiple_snr))], \
+            [[] for _ in range(len(multiple_snr))], \
+            [[] for _ in range(len(multiple_snr))], \
+            [[] for _ in range(len(multiple_snr))], \
+            [[] for _ in range(len(multiple_snr))], \
+            [[] for _ in range(len(multiple_snr))]
+
+    psnr_loss_cal = MSE().calculate_psnr
+    if config.datasets == 'CIFAR10':
+        CalcuSSIM = MS_SSIM(window_size=3, data_range=1., levels=4, channel=3).cuda()
+    else:
+        CalcuSSIM = MS_SSIM(data_range=1., levels=4, channel=3).cuda()
+    
+
+    with torch.no_grad():
+        for i in range(len(multiple_snr)):
+            for j, data in enumerate(tqdm(test_loader)):
+                imgs, labels = data
+                imgs = imgs.cuda(non_blocking=True).float()
+                labels = labels.cuda(non_blocking=True).float()
+                start_time = time.time()
+                out, cbr, g_snr, snr, cla = sc_model(imgs,multiple_snr[i])
+                time_list[i].append(time.time()-start_time)
+                loss_list[i].append(criterion(out*255., imgs*255.).item())
+                psnr_list[i].append(psnr_loss_cal(out, imgs).item())
+                ms_ssim_list[i].append(1 - CalcuSSIM(imgs, out.clamp(0., 1.)).mean().item())
+                snr_acc_list[i].append((torch.round(snr) == g_snr).float().mean().item())
+                cla_acc_list[i].append((cla.argmax(1) == labels).float().mean().item())
+
+        loss_list_avg = [round(np.mean(sublist),4) if sublist else 0 for sublist in loss_list]
+        psnr_list_avg = [round(np.mean(sublist),4) if sublist else 0 for sublist in psnr_list]
+        ms_ssim_list_avg = [round(np.mean(sublist),4) if sublist else 0 for sublist in ms_ssim_list]
+        time_list_avg = [round(np.mean(sublist),4) if sublist else 0 for sublist in time_list]
+        snr_acc_list_avg = [round(np.mean(sublist),4) if sublist else 0 for sublist in snr_acc_list]
+        cla_acc_list_avg = [round(np.mean(sublist),4) if sublist else 0 for sublist in cla_acc_list]
+
+        if test_data_name is not None:
+            log_info = f'test_datasets_name: {test_data_name}'
+            print(log_info)
+        log_info = (f'test of best model, loss: {loss_list_avg} , cbr: {cbr}, snr: {g_snr}, psnr: {psnr_list_avg},avg{np.mean(psnr_list_avg)} '
+                    f'ms_ssim: {ms_ssim_list_avg},cla_acc: {cla_acc_list_avg}, snr_acc: {snr_acc_list_avg}, cla_acc: {cla_acc_list_avg},'
+                    f' time: {time_list_avg}, score:{np.mean(psnr_list_avg) + 10*np.mean(snr_acc_list_avg)}')
+        print(log_info)
+        logger.info(log_info)
+
+    return np.mean(psnr_list_avg) + 10*np.mean(snr_acc_list_avg)
+
+
+def test_one_epoch_old( val_loader,
                     test_loader,
                     sc_model,
                     cl_model,

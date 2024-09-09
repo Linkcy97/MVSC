@@ -154,20 +154,16 @@ def main(config):
         print('#----------Testing----------#')
         best_weight = torch.load(config.work_dir + 'checkpoints/best.pth', map_location=torch.device('cpu'))
         model.load_state_dict(best_weight)
-        loss = test_one_epoch(
-                val_loader,
-                val_loader,
-                model,
-                cl_model,
-                psnr_crit,
-                config,
-                logger
-            )
+        loss = test_one_epoch(  test_loader,
+                                model,
+                                psnr_crit,
+                                config,
+                                logger)
         os.rename(
             os.path.join(checkpoint_dir, 'best.pth'),
-            os.path.join(checkpoint_dir, f'best-epoch{min_epoch}-psnr{min_loss:.4f}.pth')
+            os.path.join(checkpoint_dir, f'best-epoch{min_epoch}-max_score{max_score:.4f}.pth')
         )      
-        logger.info(f'best-epoch{min_epoch}-psnr{min_loss:.4f}.pth')
+        logger.info(f'best-epoch{min_epoch}-max_score{max_score:.4f}.pth')
 
 
 if __name__ == '__main__':

@@ -254,6 +254,33 @@ class SnrEstimate(nn.Module):
         x = rearrange(x, 'b c h w -> b (h c w)')
         x = self.fc(x)
         return x
+
+class NoiseEstimate(nn.Module):
+    def __init__(self, dim):
+        super().__init__()
+        self.conv1 = nn.Conv2d(dim, dim*16, 3, 1, 1)
+        self.resnet1 = nn.Sequential(
+            nn.Conv2d(dim*16, dim*16, 3, 1, 1),
+            nn.LeakyReLU(),
+            nn.Conv2d(dim*16, dim*16, 3, 1, 1),
+            nn.LeakyReLU())
+        self.leakyrelu = nn.LeakyReLU()
+        self.resnet2 = nn.Sequential(
+            nn.Conv2d(dim*16, dim*16, 3, 1, 1),
+            nn.LeakyReLU(),
+            nn.Conv2d(dim*16, dim*16, 3, 1, 1),
+            nn.LeakyReLU())
+        self.conv2 = nn.Conv2d(dim*16, dim, 3, 1, 1)
+    def forward(self, x):
+        x = self.conv1(x)
+        x1 = self.resnet1(x)
+        x = x + x1
+        # x = self.leakyrelu(x)
+        # x2 = self.resnet2(x)
+        # x = x + x2
+        # x = self.leakyrelu(x)
+        x = self.conv2(x)
+        return x
     
 class ConvBlock(nn.Module):
 
@@ -862,14 +889,9 @@ class MVSC(nn.Module):
                                           )
         self.channel = Channel(config)
         # self.multiple_snr = [1, 4, 7, 10, 13]    nn.Conv2d(8, 8, 3, 1, 1)
-        self.cnn_denoise = nn.Sequential(
-            nn.Conv2d(8, 16, 3, 1, 1),
-            nn.LeakyReLU(),
-            nn.Conv2d(16, 8, 3, 1, 1),
-            nn.LeakyReLU()
-        )
+        self.noise_est = NoiseEstimate(8)
 
-        self.snr_est = SnrEstimate(1)
+        self.snr_est = NoiseEstimate(8)
                                      
         self.multiple_snr = config.multiple_snr
 
@@ -894,11 +916,11 @@ class MVSC(nn.Module):
             param.requires_grad = True
 
     def freeze_snr(self):
-        for param in self.cnn_denoise.parameters():
+        for param in self.noise_est.parameters():
             param.requires_grad = False   
 
     def unfreeze_snr(self):
-        for param in self.cnn_denoise.parameters():
+        for param in self.noise_est.parameters():
             param.requires_grad = True   
 
 
@@ -921,7 +943,7 @@ class MVSC(nn.Module):
         # x_ded = self.liner_denoise(x_noise)
         # x_ded = x_noise + x_de
         x_noise = rearrange(x_noise, 'b (h w) c -> b c h w',h=x_h)
-        noise = self.cnn_denoise(x_noise)
+        noise = self.noise_est(x_noise)
         x_signal = x_noise + noise
         snr =10*torch.log10(torch.mean(x_signal**2, dim=[1, 2, 3]) / torch.mean(noise**2, dim=[1, 2, 3]))
         # x_ded = x_noise + x_de
