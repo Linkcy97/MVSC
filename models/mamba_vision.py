@@ -51,6 +51,22 @@ def window_reverse(windows, window_size, H, W):
     x = x.permute(0, 5, 1, 3, 2, 4).reshape(B,windows.shape[2], H, W)
     return x
 
+class se_block(nn.Module):
+    def __init__(self, channel, ratio=16):
+        super(se_block, self).__init__()
+        self.avg_pool = nn.AdaptiveAvgPool2d(1)
+        self.fc = nn.Sequential(
+                nn.Linear(channel, channel // ratio, bias=False),
+                nn.ReLU(inplace=True),
+                nn.Linear(channel // ratio, channel, bias=False),
+                nn.Sigmoid()
+        )
+
+    def forward(self, x):
+        b, c, _, _ = x.size()
+        y = self.avg_pool(x).view(b, c)
+        y = self.fc(y).view(b, c, 1, 1)
+        return x * y
 
 class Downsample(nn.Module):
     """
@@ -230,55 +246,39 @@ class DenoiseBlock(nn.Module):
         noise = self.act(noise)
         return x + noise
 
-class SnrEstimate(nn.Module):
+
+class NoiseAnti(nn.Module):
     def __init__(self, dim):
         super().__init__()
-        self.conv1 = nn.Conv2d(dim, dim*16, 3, 1, 1)
-        self.maxpool = nn.MaxPool2d(2, 2)
+        self.conv1 = nn.Conv2d(dim, 16, 3, 1, 1)
         self.resnet1 = nn.Sequential(
-            nn.Conv2d(dim*16, dim*16, (1,3), 1, 'same'),
-            # nn.BatchNorm2d(dim*16),
+            nn.Conv2d(16, 16, 3, 1, 1),
             nn.LeakyReLU(),
-            nn.Conv2d(dim*16, dim*16, (1,3), 1, 'same'),
-            # nn.BatchNorm2d(dim*16),
+            nn.Conv2d(16, 16, 3, 1, 1),
             nn.LeakyReLU())
-        self.avgpool = nn.AdaptiveAvgPool2d((1,32))
-        self.fc = nn.Linear(16*32, 1)
+        self.conv2 = nn.Conv2d(16, 1, 3, 1, 1)
 
     def forward(self, x):
         x = self.conv1(x)
-        x = self.maxpool(x)
         x1 = self.resnet1(x)
         x = x + x1
-        x = self.avgpool(x)
-        x = rearrange(x, 'b c h w -> b (h c w)')
-        x = self.fc(x)
+        x = self.conv2(x)
         return x
-
+    
 class NoiseEstimate(nn.Module):
     def __init__(self, dim):
         super().__init__()
-        self.conv1 = nn.Conv2d(dim, dim*16, 3, 1, 1)
+        self.conv1 = nn.Conv2d(dim, 16, 3, 1, 1)
         self.resnet1 = nn.Sequential(
-            nn.Conv2d(dim*16, dim*16, 3, 1, 1),
+            nn.Conv2d(16, 16, 3, 1, 1),
             nn.LeakyReLU(),
-            nn.Conv2d(dim*16, dim*16, 3, 1, 1),
+            nn.Conv2d(16, 16, 3, 1, 1),
             nn.LeakyReLU())
-        self.leakyrelu = nn.LeakyReLU()
-        self.resnet2 = nn.Sequential(
-            nn.Conv2d(dim*16, dim*16, 3, 1, 1),
-            nn.LeakyReLU(),
-            nn.Conv2d(dim*16, dim*16, 3, 1, 1),
-            nn.LeakyReLU())
-        self.conv2 = nn.Conv2d(dim*16, dim, 3, 1, 1)
+        self.conv2 = nn.Conv2d(16, dim, 3, 1, 1)
     def forward(self, x):
         x = self.conv1(x)
         x1 = self.resnet1(x)
         x = x + x1
-        # x = self.leakyrelu(x)
-        # x2 = self.resnet2(x)
-        # x = x + x2
-        # x = self.leakyrelu(x)
         x = self.conv2(x)
         return x
     
@@ -728,7 +728,7 @@ class MambaVisionEncoder(nn.Module):
         x = rearrange(x, 'b c h w -> b (h w) c')
         x = self.head_c(x)
         # x = self.tanh(x)
-        # x = rearrange(x, 'b (h w) c -> b c h w', h=x_h)
+        x = rearrange(x, 'b (h w) c -> b c h w', h=x_h)
         return x,x_h
 
     def forward(self, x):
@@ -783,8 +783,8 @@ class MambaVisionDecoder(nn.Module):
         self.levels = nn.ModuleList()
         for i in range(len(depths) - 1, -1, -1):
             conv = True if (i < int(len(depths)/2)) else False
-            denosie = DenoiseBlock(dim=int(dim * 2 ** i))
-            self.levels.append(denosie)
+            # denosie = DenoiseBlock(dim=int(dim * 2 ** i))
+            # self.levels.append(denosie)
             level = MambaVisionLayer(dim=int(dim * 2 ** i),
                                      depth=depths[i],
                                      num_heads=num_heads[i],
@@ -804,7 +804,7 @@ class MambaVisionDecoder(nn.Module):
                                      )
             self.levels.append(level)
         self.norm = nn.BatchNorm2d(num_features)
-        self.head_c = nn.Linear(2*C, int(dim * 2 ** (len(depths) - 1)))
+        self.head_c = nn.Linear(C, int(dim * 2 ** (len(depths) - 1)))
         self.classfiy_net = nn.Sequential(
             nn.Conv2d(dim, dim//2, 4, 4),
             nn.BatchNorm2d(dim//2),
@@ -889,10 +889,9 @@ class MVSC(nn.Module):
                                           )
         self.channel = Channel(config)
         # self.multiple_snr = [1, 4, 7, 10, 13]    nn.Conv2d(8, 8, 3, 1, 1)
+        self.noise_anti = NoiseAnti(8)
         self.noise_est = NoiseEstimate(8)
 
-        self.snr_est = NoiseEstimate(8)
-                                     
         self.multiple_snr = config.multiple_snr
 
 
@@ -918,10 +917,14 @@ class MVSC(nn.Module):
     def freeze_snr(self):
         for param in self.noise_est.parameters():
             param.requires_grad = False   
+        for param in self.noise_anti.parameters():
+            param.requires_grad = False
 
     def unfreeze_snr(self):
         for param in self.noise_est.parameters():
             param.requires_grad = True   
+        for param in self.noise_anti.parameters():
+            param.requires_grad = True
 
 
     def forward(self, x, given_snr=False):
@@ -934,21 +937,18 @@ class MVSC(nn.Module):
             choice = random.randint(0, len(self.multiple_snr) - 1)
             g_snr = self.multiple_snr[choice]
         # ones = torch.ones_like(semantic_feature)
-        x_noise = self.channel(semantic_feature, g_snr)
-        # x_noise1 = x_noise - ones
-        # x_noise1 = rearrange(x_noise, 'b hw c -> b (hw c)')
-        # x_noise1 = rearrange(x_noise1, 'b (c h w) -> b c h w', c=1,h=2)
 
-        # snr = self.snr_est(x_noise1)
-        # x_ded = self.liner_denoise(x_noise)
-        # x_ded = x_noise + x_de
-        x_noise = rearrange(x_noise, 'b (h w) c -> b c h w',h=x_h)
+        noise_anti = self.noise_anti(semantic_feature)
+        semantic_feature = semantic_feature + noise_anti
+
+        x_noise = self.channel(semantic_feature, g_snr)
+
         noise = self.noise_est(x_noise)
-        x_signal = x_noise + noise
+        x_signal = x_noise - noise
         snr =10*torch.log10(torch.mean(x_signal**2, dim=[1, 2, 3]) / torch.mean(noise**2, dim=[1, 2, 3]))
         # x_ded = x_noise + x_de
-        x_noise = rearrange(x_noise, 'b c h w -> b (h w) c')
+        x_signal = rearrange(x_signal, 'b c h w -> b (h w) c')
         noise = rearrange(noise, 'b c h w -> b (h w) c')
-        x_denoise = torch.cat((x_noise, noise), dim=2)
-        x, cla = self.decoder(x_denoise,x_h)
+        x_denoise = torch.cat((x_signal, noise), dim=2)
+        x, cla = self.decoder(x_signal,x_h)
         return x, CBR, g_snr, snr, cla

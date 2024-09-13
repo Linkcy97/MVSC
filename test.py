@@ -39,13 +39,13 @@ def main(config):
     print('#----------Prepareing loss, opt, sch and amp----------#')
     criterion = config.psnr_crit
 
-    config.work_dir = 'results/' + 'epoch100-psnr-snr' + '/'
+    config.work_dir = 'results/' + 'CIFAR10_2024-09-10_17-03-02' + '/'
     log_dir = os.path.join(config.work_dir, 'log')
     logger = get_logger('train', log_dir)
 
-    if os.path.exists(os.path.join(config.work_dir, 'checkpoints/best-epoch93-max_score30.0810.pth')):
+    if os.path.exists(os.path.join(config.work_dir, 'checkpoints/best.pth')):
         print('#----------Testing----------#')
-        best_weight = torch.load(config.work_dir + 'checkpoints/best-epoch93-max_score30.0810.pth')
+        best_weight = torch.load(config.work_dir + 'checkpoints/best.pth')
         sc_model.load_state_dict(best_weight,strict=False)
         score = test_one_epoch(
                 test_loader,

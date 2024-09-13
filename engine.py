@@ -35,18 +35,20 @@ def train_one_epoch(train_loader,
     losses, psnrs, ms_ssims, snrs, snr_acc, cla_acc = [AverageMeter() for _ in range(6)]
     metrics = [losses, psnrs, ms_ssims, snrs, snr_acc, cla_acc]
     # model.freeze_snr()
-    if epoch < 2:
+    if epoch < 0:
         model.freeze_snr()
     else:
-        if (epoch) % 2 == 0:
-            model.unfreeze_encoder()
-            model.unfreeze_snr()
-            model.freeze_decoder()
-        else:
-            model.freeze_encoder()
-            model.freeze_snr()
-            model.unfreeze_decoder()
-
+        # model.freeze_encoder()
+        model.unfreeze_snr()
+        # if (epoch) % 2 == 0:
+        #     model.freeze_encoder()
+        #     model.unfreeze_snr()
+        #     model.freeze_decoder()
+        # else:
+        #     model.unfreeze_encoder()
+        #     model.freeze_snr()
+        #     model.unfreeze_decoder()
+    optimizer = torch.optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=config.lr)
 
     for iter, data in enumerate(train_loader):
         step += iter
@@ -65,13 +67,14 @@ def train_one_epoch(train_loader,
         cla_loss = cla_crit(cla, label)
         cla_a = (cla.argmax(1) == label).float().mean()
         # loss = psnr_loss
-        if epoch < 2:
+        if epoch < 0:
             loss = psnr_loss
         else:
-            if (epoch ) % 2  == 0:
-                loss = 100*snr_loss
-            else:
-                loss = psnr_loss
+            loss = psnr_loss + 100*snr_loss 
+            # if (epoch ) % 2  == 0:
+            #     loss = 100*snr_loss
+            # else:
+            #     loss = psnr_loss
 
         optimizer.zero_grad()
         loss.backward()
@@ -163,9 +166,9 @@ def val_one_epoch(test_loader,
         snr_acc_list_avg = [round(np.mean(sublist),3) if sublist else 0 for sublist in snr_acc_list]
         cla_acc_list_avg = [round(np.mean(sublist),3) if sublist else 0 for sublist in cla_acc_list]
 
-        log_info = (f'val epoch: {epoch}, loss: {loss_list_avg}, cbr: {cbr}, snr: {g_snr[0].item()},'
-                    f'psnr: {psnr_list_avg}, avg{np.mean(psnr_list_avg)}, ms_ssim: {ms_ssim_list_avg}'
-                    f'snr_acc: {snr_acc_list_avg}, cla_acc: {cla_acc_list_avg}, score:{np.mean(psnr_list_avg) + 10*np.mean(snr_acc_list_avg)}')
+        log_info = (f'val epoch: {epoch}, loss: {loss_list_avg}, cbr: {cbr}, snr: {g_snr[0].item()},psnr: {psnr_list_avg},'
+                    f' avg{np.mean(psnr_list_avg)}, ms_ssim: {ms_ssim_list_avg},snr_acc: {snr_acc_list_avg},'
+                    f'avg{np.mean(snr_acc_list_avg)}, cla_acc: {cla_acc_list_avg}, score:{np.mean(psnr_list_avg) + 10*np.mean(snr_acc_list_avg)}')
         print(log_info)
         logger.info(log_info)
     
@@ -223,8 +226,8 @@ def test_one_epoch( test_loader,
             log_info = f'test_datasets_name: {test_data_name}'
             print(log_info)
         log_info = (f'test of best model, loss: {loss_list_avg} , cbr: {cbr}, snr: {g_snr}, psnr: {psnr_list_avg},avg{np.mean(psnr_list_avg)} '
-                    f'ms_ssim: {ms_ssim_list_avg},cla_acc: {cla_acc_list_avg}, snr_acc: {snr_acc_list_avg}, cla_acc: {cla_acc_list_avg},'
-                    f' time: {time_list_avg}, score:{np.mean(psnr_list_avg) + 10*np.mean(snr_acc_list_avg)}')
+                    f'ms_ssim: {ms_ssim_list_avg}, cla_acc: {cla_acc_list_avg}, snr_acc: {snr_acc_list_avg}, avg{np.mean(snr_acc_list_avg)}'
+                    f'cla_acc: {cla_acc_list_avg}, time: {time_list_avg}, score:{np.mean(psnr_list_avg) + 10*np.mean(snr_acc_list_avg)}')
         print(log_info)
         logger.info(log_info)
 
