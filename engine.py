@@ -2,11 +2,12 @@ import numpy as np
 from tqdm import tqdm
 import torch
 from torch.cuda.amp import autocast as autocast
-from sklearn.metrics import confusion_matrix
 from utils.utils import save_imgs, AverageMeter
 from models.distortion import *
 import time
+from models.AutomaticWeightedLoss import AutomaticWeightedLoss
     
+awl = AutomaticWeightedLoss(2)
 
 def train_one_epoch(train_loader,
                     model,
@@ -34,21 +35,18 @@ def train_one_epoch(train_loader,
 
     losses, psnrs, ms_ssims, snrs, snr_acc, cla_acc = [AverageMeter() for _ in range(6)]
     metrics = [losses, psnrs, ms_ssims, snrs, snr_acc, cla_acc]
-    # model.freeze_snr()
-    if epoch < 0:
-        model.freeze_snr()
-    else:
-        # model.freeze_encoder()
-        model.unfreeze_snr()
-        # if (epoch) % 2 == 0:
-        #     model.freeze_encoder()
-        #     model.unfreeze_snr()
-        #     model.freeze_decoder()
-        # else:
-        #     model.unfreeze_encoder()
-        #     model.freeze_snr()
-        #     model.unfreeze_decoder()
-    optimizer = torch.optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=config.lr)
+    
+    # if epoch < 3:
+    #     model.unfreeze_snr()
+    # elif epoch < 5:
+    #     model.freeze_encoder()
+    #     model.unfreeze_snr()
+    # else:
+    #     model.freeze_snr()
+
+    optimizer = torch.optim.Adam([
+                {'params': model.parameters()},
+                {'params': awl.parameters(), 'weight_decay': 0}])
 
     for iter, data in enumerate(train_loader):
         step += iter
@@ -59,23 +57,21 @@ def train_one_epoch(train_loader,
             images = data
         images = images.cuda(non_blocking=True).float()
         label = label.cuda(non_blocking=True)
-        out, cbr, g_snr, snr, cla = model(images)
+        out, cbr, g_snr, snr, cla, semantic_feature, x_signal = model(images)
         psnr_loss = psnr_crit(out*255., images*255.)
         g_snr = torch.full((snr.size(0),), g_snr).cuda()
-        snr_loss = snr_crit(snr, g_snr.float())
+        snr_loss = snr_crit(semantic_feature, x_signal)
         snr_a = (torch.round(snr) == g_snr).float().mean()
         cla_loss = cla_crit(cla, label)
         cla_a = (cla.argmax(1) == label).float().mean()
+        # if epoch < 3:
+        #     loss = psnr_loss + 100*snr_loss
+        # elif epoch < 5:
+        #     loss = snr_loss
+        # else:
+        #     loss = psnr_loss
+        loss = awl(psnr_loss, snr_loss)
         # loss = psnr_loss
-        if epoch < 0:
-            loss = psnr_loss
-        else:
-            loss = psnr_loss + 100*snr_loss 
-            # if (epoch ) % 2  == 0:
-            #     loss = 100*snr_loss
-            # else:
-            #     loss = psnr_loss
-
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
@@ -85,7 +81,7 @@ def train_one_epoch(train_loader,
         ms_ssims.update(1 - CalcuSSIM(images, out.clamp(0., 1.)).mean().item())   
         psnrs.update(psnr_loss_cal(out,images).item())
         snrs.update(g_snr[0].item())     
-        snr_acc.update(snr_a.item())
+        snr_acc.update(snr_loss.item())
         cla_acc.update(cla_a.item())
 
         now_lr = optimizer.state_dict()['param_groups'][0]['lr']
@@ -97,7 +93,7 @@ def train_one_epoch(train_loader,
                     f'Epoch {epoch}',
                     f'iter {iter}',
                     f'Loss {losses.val:.3f} ({losses.avg:.3f})',
-                    f'CBR {cbr:.4f}',
+                    f'CBR {cbr}',
                     f'SNR {snrs.val:.1f} ({snrs.avg:.1f})',
                     f'PSNR {psnrs.val:.3f} ({psnrs.avg:.3f})',
                     f'MSSSIM {ms_ssims.val:.3f} ({ms_ssims.avg:.3f})',
@@ -142,21 +138,15 @@ def val_one_epoch(test_loader,
                     img = data
                 img = img.cuda(non_blocking=True).float()
                 label = label.cuda(non_blocking=True)
-                out, cbr, g_snr, snr, cla = model(img,multiple_snr[i])
+                out, cbr, g_snr, snr, cla, semantic_feature, x_signal = model(img,multiple_snr[i])
                 g_snr = torch.full((snr.size(0),), g_snr).cuda()
-                snr_loss = snr_crit(snr, g_snr.float())
+                snr_loss = snr_crit(semantic_feature, x_signal)
                 psnr_loss = psnr_crit(out*255., img*255.)
-                if epoch < 3:
-                    loss = psnr_loss
-                else:
-                    if epoch % 2 == 0:
-                        loss = 100*snr_loss 
-                    else:
-                        loss = psnr_loss
+                loss = psnr_loss + 100*snr_loss
 
                 loss_list[i].append(loss.item())
                 psnr_list[i].append(psnr_loss_cal(out, img).item())
-                snr_acc_list[i].append((torch.round(snr) == g_snr).float().mean().item())
+                snr_acc_list[i].append(snr_loss.item())
                 cla_acc_list[i].append((cla.argmax(1) == label).float().mean().item())
                 ms_ssim_list[i].append(1 - CalcuSSIM(img, out.clamp(0., 1.)).mean().item())
 
@@ -166,16 +156,17 @@ def val_one_epoch(test_loader,
         snr_acc_list_avg = [round(np.mean(sublist),3) if sublist else 0 for sublist in snr_acc_list]
         cla_acc_list_avg = [round(np.mean(sublist),3) if sublist else 0 for sublist in cla_acc_list]
 
-        log_info = (f'val epoch: {epoch}, loss: {loss_list_avg}, cbr: {cbr}, snr: {g_snr[0].item()},psnr: {psnr_list_avg},'
-                    f' avg{np.mean(psnr_list_avg)}, ms_ssim: {ms_ssim_list_avg},snr_acc: {snr_acc_list_avg},'
+        log_info = (f'val epoch: {epoch}, loss: {loss_list_avg}, cbr: {cbr}, psnr: {psnr_list_avg},'
+                    f' avg{np.mean(psnr_list_avg)}, ms_ssim: {ms_ssim_list_avg}, snr_acc: {snr_acc_list_avg},'
                     f'avg{np.mean(snr_acc_list_avg)}, cla_acc: {cla_acc_list_avg}, score:{np.mean(psnr_list_avg) + 10*np.mean(snr_acc_list_avg)}')
         print(log_info)
         logger.info(log_info)
     
-    return np.mean(psnr_list_avg) + 10*np.mean(snr_acc_list_avg)
+    return np.mean(psnr_list_avg)
 
 
 def test_one_epoch( test_loader,
+                    kodak_loader,
                     sc_model,
                     criterion,
                     config,
@@ -207,31 +198,60 @@ def test_one_epoch( test_loader,
                 imgs = imgs.cuda(non_blocking=True).float()
                 labels = labels.cuda(non_blocking=True).float()
                 start_time = time.time()
-                out, cbr, g_snr, snr, cla = sc_model(imgs,multiple_snr[i])
+                out, cbr, g_snr, snr, cla, semantic_feature, x_signal = sc_model(imgs,multiple_snr[i])
                 time_list[i].append(time.time()-start_time)
-                loss_list[i].append(criterion(out*255., imgs*255.).item())
                 psnr_list[i].append(psnr_loss_cal(out, imgs).item())
                 ms_ssim_list[i].append(1 - CalcuSSIM(imgs, out.clamp(0., 1.)).mean().item())
-                snr_acc_list[i].append((torch.round(snr) == g_snr).float().mean().item())
+                snr_acc_list[i].append(criterion(semantic_feature, x_signal).item())
                 cla_acc_list[i].append((cla.argmax(1) == labels).float().mean().item())
 
-        loss_list_avg = [round(np.mean(sublist),4) if sublist else 0 for sublist in loss_list]
         psnr_list_avg = [round(np.mean(sublist),4) if sublist else 0 for sublist in psnr_list]
         ms_ssim_list_avg = [round(np.mean(sublist),4) if sublist else 0 for sublist in ms_ssim_list]
         time_list_avg = [round(np.mean(sublist),4) if sublist else 0 for sublist in time_list]
         snr_acc_list_avg = [round(np.mean(sublist),4) if sublist else 0 for sublist in snr_acc_list]
         cla_acc_list_avg = [round(np.mean(sublist),4) if sublist else 0 for sublist in cla_acc_list]
+        if test_data_name is not None:
+            log_info = f'test_datasets_name: {test_data_name}'
+            print(log_info)
+        log_info = (f'test in CIFAR, cbr: {cbr}, psnr: {psnr_list_avg},avg{np.mean(psnr_list_avg)} '
+                    f'ms_ssim: {ms_ssim_list_avg}, cla_acc: {cla_acc_list_avg}, snr_acc: {snr_acc_list_avg}, avg{np.mean(snr_acc_list_avg)}'
+                    f'cla_acc: {cla_acc_list_avg}, time: {time_list_avg},')
+        print(log_info)
+        logger.info(log_info)
+
+    with torch.no_grad():
+        for i in range(len(multiple_snr)):
+            for j, data in enumerate(tqdm(kodak_loader)):
+                imgs = data
+                imgs = imgs.cuda(non_blocking=True).float()
+                start_time = time.time()
+                out, cbr, g_snr, snr, cla, semantic_feature, x_signal = sc_model(imgs,multiple_snr[i])
+                time_list[i].append(time.time()-start_time)
+                psnr_list[i].append(psnr_loss_cal(out, imgs).item())
+                ms_ssim_list[i].append(1 - CalcuSSIM(imgs, out.clamp(0., 1.)).mean().item())
+                snr_acc_list[i].append(criterion(semantic_feature, x_signal).item())
+
+                if config.test_datasets == 'Kodak':
+                    save_imgs(imgs, out, j, config.work_dir + 'outputs/', test_data_name='_%ssnr'%multiple_snr[i])
+                else:
+                    if i == j:
+                        save_imgs(imgs, out, i, config.work_dir + 'outputs/', test_data_name='_%ssnr'%multiple_snr[i])
+
+        psnr_list_avg = [round(np.mean(sublist),4) if sublist else 0 for sublist in psnr_list]
+        ms_ssim_list_avg = [round(np.mean(sublist),4) if sublist else 0 for sublist in ms_ssim_list]
+        time_list_avg = [round(np.mean(sublist),4) if sublist else 0 for sublist in time_list]
+        snr_acc_list_avg = [round(np.mean(sublist),4) if sublist else 0 for sublist in snr_acc_list]
 
         if test_data_name is not None:
             log_info = f'test_datasets_name: {test_data_name}'
             print(log_info)
-        log_info = (f'test of best model, loss: {loss_list_avg} , cbr: {cbr}, snr: {g_snr}, psnr: {psnr_list_avg},avg{np.mean(psnr_list_avg)} '
-                    f'ms_ssim: {ms_ssim_list_avg}, cla_acc: {cla_acc_list_avg}, snr_acc: {snr_acc_list_avg}, avg{np.mean(snr_acc_list_avg)}'
-                    f'cla_acc: {cla_acc_list_avg}, time: {time_list_avg}, score:{np.mean(psnr_list_avg) + 10*np.mean(snr_acc_list_avg)}')
+        log_info = (f'test in kodak, cbr: {cbr}, psnr: {psnr_list_avg}, avg{np.mean(psnr_list_avg)} '
+                    f'ms_ssim: {ms_ssim_list_avg}, snr_acc: {snr_acc_list_avg}, avg{np.mean(snr_acc_list_avg)}'
+                    f'time: {time_list_avg}')
         print(log_info)
         logger.info(log_info)
 
-    return np.mean(psnr_list_avg) + 10*np.mean(snr_acc_list_avg)
+    return np.mean(psnr_list_avg)
 
 
 def test_one_epoch_old( val_loader,

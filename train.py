@@ -22,7 +22,6 @@ warnings.filterwarnings("ignore")
 
 
 def main(config):
-
     print('#----------Creating logger----------#')
     sys.path.append(config.work_dir + '/')
     log_dir = os.path.join(config.work_dir, 'log')
@@ -49,7 +48,7 @@ def main(config):
 
 
     print('#----------Preparing dataset----------#')
-    train_loader, val_loader, test_loader = get_loader(config)
+    train_loader, val_loader, test_loader, kodak_loader = get_loader(config)
 
 
 
@@ -155,6 +154,7 @@ def main(config):
         best_weight = torch.load(config.work_dir + 'checkpoints/best.pth', map_location=torch.device('cpu'))
         model.load_state_dict(best_weight)
         loss = test_one_epoch(  test_loader,
+                                kodak_loader,
                                 model,
                                 psnr_crit,
                                 config,

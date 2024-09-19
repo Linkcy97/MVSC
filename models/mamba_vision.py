@@ -18,6 +18,8 @@ import torch.nn.functional as F
 from mamba_ssm.ops.selective_scan_interface import selective_scan_fn
 from einops import rearrange, repeat
 from .channel import Channel
+from fractions import Fraction
+
 
 
 def window_partition(x, window_size):
@@ -52,7 +54,7 @@ def window_reverse(windows, window_size, H, W):
     return x
 
 class se_block(nn.Module):
-    def __init__(self, channel, ratio=16):
+    def __init__(self, channel, ratio=4):
         super(se_block, self).__init__()
         self.avg_pool = nn.AdaptiveAvgPool2d(1)
         self.fc = nn.Sequential(
@@ -274,12 +276,18 @@ class NoiseEstimate(nn.Module):
             nn.LeakyReLU(),
             nn.Conv2d(16, 16, 3, 1, 1),
             nn.LeakyReLU())
+        self.resnet2 = nn.Sequential(
+            nn.Conv2d(16, 16, 3, 1, 1),
+            nn.LeakyReLU(),
+            nn.Conv2d(16, 16, 3, 1, 1),
+            nn.LeakyReLU())
         self.conv2 = nn.Conv2d(16, dim, 3, 1, 1)
     def forward(self, x):
         x = self.conv1(x)
         x1 = self.resnet1(x)
         x = x + x1
-        x = self.conv2(x)
+        x2 = self.resnet2(x)
+        x = self.conv2(x2)
         return x
     
 class ConvBlock(nn.Module):
@@ -804,7 +812,7 @@ class MambaVisionDecoder(nn.Module):
                                      )
             self.levels.append(level)
         self.norm = nn.BatchNorm2d(num_features)
-        self.head_c = nn.Linear(C, int(dim * 2 ** (len(depths) - 1)))
+        self.head_c = nn.Linear(2*C, int(dim * 2 ** (len(depths) - 1)))
         self.classfiy_net = nn.Sequential(
             nn.Conv2d(dim, dim//2, 4, 4),
             nn.BatchNorm2d(dim//2),
@@ -891,6 +899,7 @@ class MVSC(nn.Module):
         # self.multiple_snr = [1, 4, 7, 10, 13]    nn.Conv2d(8, 8, 3, 1, 1)
         self.noise_anti = NoiseAnti(8)
         self.noise_est = NoiseEstimate(8)
+        self.att = se_block(16)
 
         self.multiple_snr = config.multiple_snr
 
@@ -929,7 +938,7 @@ class MVSC(nn.Module):
 
     def forward(self, x, given_snr=False):
         semantic_feature, x_h = self.encoder(x)
-        CBR = semantic_feature.numel() / 2 / x.numel()
+        CBR = Fraction(semantic_feature.numel()) / 2 / Fraction(x.numel())
         if given_snr:
             g_snr = given_snr
             choice = self.multiple_snr.index(g_snr)
@@ -938,17 +947,18 @@ class MVSC(nn.Module):
             g_snr = self.multiple_snr[choice]
         # ones = torch.ones_like(semantic_feature)
 
-        noise_anti = self.noise_anti(semantic_feature)
-        semantic_feature = semantic_feature + noise_anti
+        # noise_anti = self.noise_anti(semantic_feature)
 
         x_noise = self.channel(semantic_feature, g_snr)
 
-        noise = self.noise_est(x_noise)
-        x_signal = x_noise - noise
-        snr =10*torch.log10(torch.mean(x_signal**2, dim=[1, 2, 3]) / torch.mean(noise**2, dim=[1, 2, 3]))
+        x_signal = self.noise_est(x_noise)
+        snr = 10*torch.log10(torch.mean(x_signal**2, dim=[1, 2, 3]) / torch.mean(x_signal**2, dim=[1, 2, 3]))
         # x_ded = x_noise + x_de
-        x_signal = rearrange(x_signal, 'b c h w -> b (h w) c')
-        noise = rearrange(noise, 'b c h w -> b (h w) c')
-        x_denoise = torch.cat((x_signal, noise), dim=2)
-        x, cla = self.decoder(x_signal,x_h)
-        return x, CBR, g_snr, snr, cla
+        x_denoise = torch.cat((x_signal, x_noise), dim=1)
+        # x_signal1 = rearrange(x_signal, 'b c h w -> b (h w) c')
+        # x_noise1 = rearrange(x_noise, 'b c h w -> b (h w) c')
+        # x_denoise = torch.cat((x_signal1, x_noise1), dim=2)
+        x_denoise = self.att(x_denoise)
+        x_denoise = rearrange(x_denoise, 'b c h w -> b (h w) c')
+        x, cla = self.decoder(x_denoise, x_h)
+        return x, CBR, g_snr, snr, cla, semantic_feature, x_signal

@@ -130,7 +130,7 @@ def get_loader(config):
                                 transform=transform_test,
                                 download=False)
 
-        # test_dataset = Datasets(config.test_data_dir)
+        kodak_dataset = Datasets(config.test_data_dir)
         train_dataset = CIFAR10(train_dataset)
 
     else:
@@ -154,7 +154,9 @@ def get_loader(config):
         test_loader = data.DataLoader(dataset=test_dataset,
                                   batch_size=512,
                                   shuffle=False)
-
+        kodak_loader = data.DataLoader(dataset=kodak_dataset,
+                                  batch_size=1,
+                                  shuffle=False)
     elif config.datasets == 'DIV2K':
         test_loader = data.DataLoader(dataset=test_dataset,
                                               batch_size=1,
@@ -164,7 +166,7 @@ def get_loader(config):
                                                 batch_size=1,
                                                 shuffle=False)
     
-    return train_loader, val_loader, test_loader
+    return train_loader, val_loader, test_loader, kodak_loader
 
 
 

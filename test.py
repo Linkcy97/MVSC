@@ -30,7 +30,7 @@ def main(config):
 
 
     print('#----------Preparing dataset----------#')
-    _, val_loader, test_loader = get_loader(config)
+    _, _, test_loader, kodak_loader = get_loader(config)
 
     print('#----------Prepareing Model----------#')
     sc_model = MVSC(config)
@@ -39,7 +39,7 @@ def main(config):
     print('#----------Prepareing loss, opt, sch and amp----------#')
     criterion = config.psnr_crit
 
-    config.work_dir = 'results/' + 'CIFAR10_2024-09-10_17-03-02' + '/'
+    config.work_dir = 'results/' + 'CIFAR10_2024-09-18_20-30-45' + '/'
     log_dir = os.path.join(config.work_dir, 'log')
     logger = get_logger('train', log_dir)
 
@@ -49,6 +49,7 @@ def main(config):
         sc_model.load_state_dict(best_weight,strict=False)
         score = test_one_epoch(
                 test_loader,
+                kodak_loader,
                 sc_model,
                 criterion,
                 config,

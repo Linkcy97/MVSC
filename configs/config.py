@@ -55,8 +55,8 @@ class setting_config:
     snr_crit = MSELoss()
     cla_crit = CrossEntropyLoss()
     # multiple_snr = [-7]
-    # multiple_snr = [-7, -4, 0, 4, 7, 30]
-    multiple_snr = [1, 4, 7, 10, 13]
+    multiple_snr = [-7, -4, 0, 4, 7]
+    # multiple_snr = [1, 4, 7, 10, 13]
 
     pretrained_path = './pre_trained/'
     num_classes = 10
