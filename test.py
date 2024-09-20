@@ -39,7 +39,7 @@ def main(config):
     print('#----------Prepareing loss, opt, sch and amp----------#')
     criterion = config.psnr_crit
 
-    config.work_dir = 'results/' + 'CIFAR10_2024-09-18_20-30-45' + '/'
+    config.work_dir = 'results/' + 'CIFAR10_2024-09-19_21-43-33' + '/'
     log_dir = os.path.join(config.work_dir, 'log')
     logger = get_logger('train', log_dir)
 

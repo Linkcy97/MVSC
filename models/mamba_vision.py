@@ -53,6 +53,17 @@ def window_reverse(windows, window_size, H, W):
     x = x.permute(0, 5, 1, 3, 2, 4).reshape(B,windows.shape[2], H, W)
     return x
 
+class EnergyNormalizationLayer(nn.Module):
+    def __init__(self):
+        super(EnergyNormalizationLayer, self).__init__()
+
+    def forward(self, x):
+        # 计算每个特征图的能量（L2范数）
+        energy = torch.sqrt(torch.sum(x ** 2, dim=2, keepdim=True)) + 1e-8  # 添加一个小的常数避免除零错误
+        # 归一化每个特征图的能量
+        normalized_x = x / energy
+        return normalized_x
+    
 class se_block(nn.Module):
     def __init__(self, channel, ratio=4):
         super(se_block, self).__init__()
@@ -290,6 +301,7 @@ class NoiseEstimate(nn.Module):
         x = self.conv2(x2)
         return x
     
+
 class ConvBlock(nn.Module):
 
     def __init__(self, dim,
@@ -704,6 +716,7 @@ class MambaVisionEncoder(nn.Module):
                                      )
             self.levels.append(level)
         self.norm = nn.BatchNorm2d(num_features)
+        self.energy_norm_layer = EnergyNormalizationLayer()
         self.head_c = nn.Linear(num_features, C)
         self.tanh = nn.Tanh()
         self.apply(self._init_weights)
@@ -735,6 +748,7 @@ class MambaVisionEncoder(nn.Module):
         x_h = x.shape[2]
         x = rearrange(x, 'b c h w -> b (h w) c')
         x = self.head_c(x)
+        x = self.energy_norm_layer(x) 
         # x = self.tanh(x)
         x = rearrange(x, 'b (h w) c -> b c h w', h=x_h)
         return x,x_h
@@ -952,7 +966,7 @@ class MVSC(nn.Module):
         x_noise = self.channel(semantic_feature, g_snr)
 
         x_signal = self.noise_est(x_noise)
-        snr = 10*torch.log10(torch.mean(x_signal**2, dim=[1, 2, 3]) / torch.mean(x_signal**2, dim=[1, 2, 3]))
+        snr = 10*torch.log10(torch.mean(x_signal**2, dim=[1, 2, 3]) / torch.mean((x_noise-x_signal)**2, dim=[1, 2, 3]))
         # x_ded = x_noise + x_de
         x_denoise = torch.cat((x_signal, x_noise), dim=1)
         # x_signal1 = rearrange(x_signal, 'b c h w -> b (h w) c')

@@ -9,6 +9,8 @@ from models.AutomaticWeightedLoss import AutomaticWeightedLoss
     
 awl = AutomaticWeightedLoss(2)
 
+d_snr = DiscreteSNRLayer([-7., -4., 0., 4., 7.])
+
 def train_one_epoch(train_loader,
                     model,
                     optimizer,
@@ -60,8 +62,8 @@ def train_one_epoch(train_loader,
         out, cbr, g_snr, snr, cla, semantic_feature, x_signal = model(images)
         psnr_loss = psnr_crit(out*255., images*255.)
         g_snr = torch.full((snr.size(0),), g_snr).cuda()
-        snr_loss = snr_crit(semantic_feature, x_signal)
-        snr_a = (torch.round(snr) == g_snr).float().mean()
+        snr_loss = snr_crit(g_snr, snr)
+        snr_a = (d_snr(snr) == g_snr).float().mean()
         cla_loss = cla_crit(cla, label)
         cla_a = (cla.argmax(1) == label).float().mean()
         # if epoch < 3:
@@ -81,7 +83,7 @@ def train_one_epoch(train_loader,
         ms_ssims.update(1 - CalcuSSIM(images, out.clamp(0., 1.)).mean().item())   
         psnrs.update(psnr_loss_cal(out,images).item())
         snrs.update(g_snr[0].item())     
-        snr_acc.update(snr_loss.item())
+        snr_acc.update(snr_a.item())
         cla_acc.update(cla_a.item())
 
         now_lr = optimizer.state_dict()['param_groups'][0]['lr']
@@ -143,10 +145,11 @@ def val_one_epoch(test_loader,
                 snr_loss = snr_crit(semantic_feature, x_signal)
                 psnr_loss = psnr_crit(out*255., img*255.)
                 loss = psnr_loss + 100*snr_loss
+                snr_a = (d_snr(snr) == g_snr).float().mean()
 
                 loss_list[i].append(loss.item())
                 psnr_list[i].append(psnr_loss_cal(out, img).item())
-                snr_acc_list[i].append(snr_loss.item())
+                snr_acc_list[i].append(snr_a.item())
                 cla_acc_list[i].append((cla.argmax(1) == label).float().mean().item())
                 ms_ssim_list[i].append(1 - CalcuSSIM(img, out.clamp(0., 1.)).mean().item())
 
@@ -199,10 +202,11 @@ def test_one_epoch( test_loader,
                 labels = labels.cuda(non_blocking=True).float()
                 start_time = time.time()
                 out, cbr, g_snr, snr, cla, semantic_feature, x_signal = sc_model(imgs,multiple_snr[i])
+                snr_a = (d_snr(snr) == g_snr).float().mean()
                 time_list[i].append(time.time()-start_time)
                 psnr_list[i].append(psnr_loss_cal(out, imgs).item())
                 ms_ssim_list[i].append(1 - CalcuSSIM(imgs, out.clamp(0., 1.)).mean().item())
-                snr_acc_list[i].append(criterion(semantic_feature, x_signal).item())
+                snr_acc_list[i].append(snr_a.item())
                 cla_acc_list[i].append((cla.argmax(1) == labels).float().mean().item())
 
         psnr_list_avg = [round(np.mean(sublist),4) if sublist else 0 for sublist in psnr_list]
@@ -226,10 +230,11 @@ def test_one_epoch( test_loader,
                 imgs = imgs.cuda(non_blocking=True).float()
                 start_time = time.time()
                 out, cbr, g_snr, snr, cla, semantic_feature, x_signal = sc_model(imgs,multiple_snr[i])
+                snr_a = (torch.round(snr) == g_snr).float().mean()
                 time_list[i].append(time.time()-start_time)
                 psnr_list[i].append(psnr_loss_cal(out, imgs).item())
                 ms_ssim_list[i].append(1 - CalcuSSIM(imgs, out.clamp(0., 1.)).mean().item())
-                snr_acc_list[i].append(criterion(semantic_feature, x_signal).item())
+                snr_acc_list[i].append(snr_a.item())
 
                 if config.test_datasets == 'Kodak':
                     save_imgs(imgs, out, j, config.work_dir + 'outputs/', test_data_name='_%ssnr'%multiple_snr[i])
