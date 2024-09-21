@@ -53,6 +53,7 @@ class setting_config:
     norm = False
     psnr_crit = MSELoss()
     snr_crit = MSELoss()
+    signal_crit = MSELoss()
     cla_crit = CrossEntropyLoss()
     # multiple_snr = [-7]
     multiple_snr = [-7., -4., 0., 4., 7.]
@@ -83,7 +84,7 @@ class setting_config:
     amp = False
     device = 'cuda'
     gpu_id = '0'
-    epochs = 10
+    epochs = 100
 
     work_dir = 'results/' +  datasets + '_' + datetime.now().strftime('%Y-%m-%d_%H-%M-%S') + '/'
     # work_dir = 'results/'  + 'CIFAR10_2024-08-07_09-39-02'

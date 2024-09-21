@@ -828,19 +828,13 @@ class MambaVisionDecoder(nn.Module):
         self.norm = nn.BatchNorm2d(num_features)
         self.head_c = nn.Linear(2*C, int(dim * 2 ** (len(depths) - 1)))
         self.classfiy_net = nn.Sequential(
-            nn.Conv2d(dim, dim//2, 4, 4),
-            nn.BatchNorm2d(dim//2),
+            nn.Conv2d(dim, dim//2, 3, 1, 1),
             nn.ReLU(),
-            nn.Conv2d(dim//2, 10, 4, 4),
-            nn.BatchNorm2d(10),
-            nn.Sigmoid())
-        # self.snr_net = nn.Sequential(
-        #     nn.Conv2d(dim, dim//2, 4, 4),
-        #     nn.BatchNorm2d(dim//2),
-        #     nn.ReLU(),
-        #     nn.Conv2d(dim//2, 5, 4, 4),
-        #     nn.BatchNorm2d(5),
-        #     nn.Sigmoid())
+            nn.Conv2d(dim//2, 10, 3, 1, 1),
+            nn.ReLU(),
+            nn.AdaptiveAvgPool2d((1, 1)),
+            nn.Flatten(),
+            nn.Linear(10, 10))
 
         self.apply(self._init_weights)
 
@@ -873,7 +867,7 @@ class MambaVisionDecoder(nn.Module):
 
         x = self.norm(x) 
         cla = self.classfiy_net(x)
-        cla = rearrange(cla, 'b c h w -> b (h w c)')
+        # cla = rearrange(cla, 'b c h w -> b (h w c)')
         # snr = self.snr_net(x)
         # snr = rearrange(snr, 'b c h w -> b (h w c)')
         x =  self.patch_unembed(x)

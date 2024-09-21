@@ -68,6 +68,7 @@ def main(config):
     psnr_crit = config.psnr_crit
     snr_crit = config.snr_crit
     cla_crit = config.cla_crit
+    signal_crit = config.signal_crit
     optimizer = get_optimizer(config, model)
     scheduler = get_scheduler(config, optimizer)
 
@@ -113,6 +114,7 @@ def main(config):
             psnr_crit,
             snr_crit,
             cla_crit,
+            signal_crit,
             scheduler,
             epoch,
             step,
@@ -126,6 +128,7 @@ def main(config):
                 model,
                 psnr_crit,
                 snr_crit,
+                signal_crit,
                 epoch,
                 logger,
                 config
