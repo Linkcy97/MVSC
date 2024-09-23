@@ -87,7 +87,7 @@ class setting_config:
     epochs = 100
 
     work_dir = 'results/' +  datasets + '_' + datetime.now().strftime('%Y-%m-%d_%H-%M-%S') + '/'
-    # work_dir = 'results/'  + 'CIFAR10_2024-08-07_09-39-02'
+    # work_dir = 'results/'  + 'CIFAR10_2024-09-21_10-00-56'
 
     val_interval = 30
     save_interval = 100

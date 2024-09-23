@@ -10,8 +10,10 @@ from classify_net import ResNet8
 from utils.datasets import get_loader
 from tensorboardX import SummaryWriter
 from models.mamba_vision import MVSC
+from models.djscc import Djscc
 from engine import *
 import os
+import shutil
 import sys
 from utils.utils import *
 from configs.config import setting_config
@@ -19,9 +21,21 @@ from configs.config import setting_config
 import warnings
 warnings.filterwarnings("ignore")
 
+def delete_empty_checkpoints(root_dir):
+    for root, dirs, files in os.walk(root_dir, topdown=False):
+        for dir_name in dirs:
+            dir_path = os.path.join(root, dir_name)
+            if dir_name == 'checkpoints':
+                # 检查 checkpoints 文件夹是否为空
+                if not os.listdir(dir_path):
+                    # 获取包含 checkpoints 文件夹的父文件夹路径
+                    parent_dir = os.path.dirname(dir_path)
+                    print(f"Deleting folder: {parent_dir}")
+                    shutil.rmtree(parent_dir)
 
 
 def main(config):
+    delete_empty_checkpoints('results')
     print('#----------Creating logger----------#')
     sys.path.append(config.work_dir + '/')
     log_dir = os.path.join(config.work_dir, 'log')
@@ -39,7 +53,9 @@ def main(config):
     writer = SummaryWriter(config.work_dir + 'summary')
 
     log_config_info(config, logger)
-
+    # copy model file to work_dir
+    shutil.copy('models/mamba_vision.py', config.work_dir)
+    shutil.copy('models/djscc.py', config.work_dir)
 
     print('#----------GPU init----------#')
     os.environ["CUDA_VISIBLE_DEVICES"] = config.gpu_id
@@ -51,7 +67,6 @@ def main(config):
     train_loader, val_loader, test_loader, kodak_loader = get_loader(config)
 
 
-
     print('#----------Prepareing Model----------#')
     model = MVSC(config)
     model = model.cuda()
@@ -59,9 +74,6 @@ def main(config):
     cl_model = cl_model.cuda()
     cl_model.load_state_dict(torch.load('classify.pth'))
     cal_params_flops(model, config.input_size_h, logger)
-
-
-
 
 
     print('#----------Prepareing loss, opt, sch and amp----------#')
@@ -73,15 +85,10 @@ def main(config):
     scheduler = get_scheduler(config, optimizer)
 
 
-
-
-
     print('#----------Set other params----------#')
     max_score = 0
     start_epoch = 1
     min_epoch = 1
-
-
 
 
 

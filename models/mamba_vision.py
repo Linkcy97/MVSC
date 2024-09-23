@@ -718,7 +718,6 @@ class MambaVisionEncoder(nn.Module):
         self.norm = nn.BatchNorm2d(num_features)
         self.energy_norm_layer = EnergyNormalizationLayer()
         self.head_c = nn.Linear(num_features, C)
-        self.tanh = nn.Tanh()
         self.apply(self._init_weights)
 
     def _init_weights(self, m):
@@ -749,7 +748,6 @@ class MambaVisionEncoder(nn.Module):
         x = rearrange(x, 'b c h w -> b (h w) c')
         x = self.head_c(x)
         x = self.energy_norm_layer(x) 
-        # x = self.tanh(x)
         x = rearrange(x, 'b (h w) c -> b c h w', h=x_h)
         return x,x_h
 
@@ -968,5 +966,6 @@ class MVSC(nn.Module):
         # x_denoise = torch.cat((x_signal1, x_noise1), dim=2)
         x_denoise = self.att(x_denoise)
         x_denoise = rearrange(x_denoise, 'b c h w -> b (h w) c')
+        # x_noise = rearrange(x_noise, 'b c h w -> b (h w) c')
         x, cla = self.decoder(x_denoise, x_h)
         return x, CBR, g_snr, snr, cla, semantic_feature, x_signal

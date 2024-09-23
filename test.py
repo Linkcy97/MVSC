@@ -9,6 +9,7 @@
 import os
 import torch
 from models.mamba_vision import MVSC
+from models.djscc import Djscc
 from models.distortion import *
 from classify_net import ResNet8
 from engine import *
@@ -39,7 +40,7 @@ def main(config):
     print('#----------Prepareing loss, opt, sch and amp----------#')
     criterion = config.psnr_crit
 
-    config.work_dir = 'results/' + 'epoch100_1_loss' + '/'
+    config.work_dir = 'results/' + 'epoch100_4_loss' + '/'
     log_dir = os.path.join(config.work_dir, 'log')
     logger = get_logger('train', log_dir)
 
