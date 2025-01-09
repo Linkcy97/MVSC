@@ -39,7 +39,7 @@ def train_one_epoch(train_loader,
     metrics = [losses, psnrs, ms_ssims, snrs, snr_acc, cla_acc, s_mse]
     
 
-    awl = AutomaticWeightedLoss(1)
+    awl = AutomaticWeightedLoss(4)
 
     optimizer = torch.optim.Adam([
                 {'params': model.parameters()},
@@ -64,9 +64,8 @@ def train_one_epoch(train_loader,
         cla_a = (cla.argmax(1) == label).float().mean()
 
 
-        loss = awl(psnr_loss)
+        loss = awl(psnr_loss, snr_loss, signal_loss, cla_loss)
 
-        # loss = psnr_loss
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
