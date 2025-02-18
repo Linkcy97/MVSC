@@ -144,7 +144,7 @@ def get_loader(config):
                                             pin_memory=True,
                                             batch_size=config.batch_size,
                                             worker_init_fn=worker_init_fn_seed,
-                                            shuffle=True,
+                                            shuffle=False,
                                             drop_last=True)
     
     if config.datasets == 'CIFAR10':

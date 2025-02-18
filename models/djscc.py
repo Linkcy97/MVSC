@@ -62,7 +62,6 @@ class DjsccEncoder(nn.Module):
         return x, x_h
 
         
-
 class DjsccDecoder(nn.Module):
     """
     MambaVision,
@@ -99,8 +98,8 @@ class Djscc(nn.Module):
                  config,
                  ):
         super().__init__()
-        self.encoder = DjsccEncoder(8,[16,32,32])
-        self.decoder = DjsccDecoder(8,[16,32,32])
+        self.encoder = DjsccEncoder(config.C,[256,512,512])
+        self.decoder = DjsccDecoder(config.C,[256,512,512])
         self.channel = Channel(config)
         self.multiple_snr = config.multiple_snr
 
@@ -115,9 +114,7 @@ class Djscc(nn.Module):
             choice = random.randint(0, len(self.multiple_snr) - 1)
             g_snr = self.multiple_snr[choice]
         x_signal = self.channel(semantic_feature, g_snr)
-
         snr = 10*torch.log10(torch.mean(semantic_feature**2, dim=[1, 2]) / torch.mean((x_signal-semantic_feature)**2, dim=[1, 2]))
-
         x = self.decoder(x_signal, x_h)
         cla = torch.rand((x_signal.shape[0], 10)).cuda()
         return x, CBR, g_snr, snr, cla, semantic_feature, x_signal

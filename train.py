@@ -56,7 +56,7 @@ def main(config):
     # copy model file to work_dir
     shutil.copy('models/mamba_vision.py', config.work_dir)
     shutil.copy('models/djscc.py', config.work_dir)
-
+    shutil.copy('configs/config.py', config.work_dir)
     print('#----------GPU init----------#')
     os.environ["CUDA_VISIBLE_DEVICES"] = config.gpu_id
     set_seed(config.seed)
@@ -69,6 +69,7 @@ def main(config):
 
     print('#----------Prepareing Model----------#')
     model = MVSC(config)
+    # model = Djscc(config)
     model = model.cuda()
     cl_model = ResNet8({'in_channels': 3, 'out_channels': 10, 'activation': 'relu'})
     cl_model = cl_model.cuda()
@@ -100,9 +101,9 @@ def main(config):
         scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
         saved_epoch = checkpoint['epoch']
         start_epoch += saved_epoch
-        min_loss, min_epoch, loss = checkpoint['min_loss'], checkpoint['min_epoch'], checkpoint['loss']
+        max_score, min_epoch, loss = checkpoint['max_score'], checkpoint['min_epoch'], checkpoint['score']
 
-        log_info = f'resuming model from {resume_model}. resume_epoch: {saved_epoch}, min_loss: {min_loss:.4f}, min_epoch: {min_epoch}, loss: {loss:.4f}'
+        log_info = f'resuming model from {resume_model}. resume_epoch: {saved_epoch}, max_score: {max_score:.4f}, min_epoch: {min_epoch}'
         logger.info(log_info)
 
 
