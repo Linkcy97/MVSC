@@ -39,12 +39,12 @@ def train_one_epoch(train_loader,
     metrics = [losses, psnrs, ms_ssims, snrs, snr_acc, cla_acc, s_mse]
     
 
+    # awl = AutomaticWeightedLoss(1)
     # awl = AutomaticWeightedLoss(4)
-    awl = AutomaticWeightedLoss(4)
-
-    optimizer = torch.optim.Adam([
-                {'params': model.parameters()},
-                {'params': awl.parameters(), 'weight_decay': 0}])
+    # optimizer = torch.optim.Adam([
+    #             {'params': model.parameters()},
+    #             {'params': awl.parameters(), 'weight_decay': 0}])
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
 
     for iter, data in enumerate(train_loader):
         step += iter
@@ -64,8 +64,8 @@ def train_one_epoch(train_loader,
         cla_loss = cla_crit(cla, label)
         cla_a = (cla.argmax(1) == label).float().mean()
 
-
-        loss = awl(psnr_loss, snr_loss, signal_loss, cla_loss)
+        loss = 0.1*psnr_loss + 0.1*snr_loss + 10*signal_loss + 10*cla_loss
+        # loss = awl(psnr_loss, snr_loss, signal_loss, cla_loss)
         # loss = awl(psnr_loss)
 
         optimizer.zero_grad()
@@ -247,7 +247,7 @@ def test_one_epoch( test_loader,
                 imgs = data
                 imgs = imgs.cuda(non_blocking=True).float()
                 start_time = time.time()
-                out, cbr, g_snr, snr, cla, semantic_feature, x_signal = sc_model(imgs,multiple_snr[i])
+                out, cbr, g_snr, snr, cla, semantic_feature, x_signal, _, _ = sc_model(imgs,multiple_snr[i])
                 snr_a = (torch.round(snr) == g_snr).float().mean()
                 time_list[i].append(time.time()-start_time)
                 psnr_list[i].append(psnr_loss_cal(out, imgs).item())

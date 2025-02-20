@@ -34,13 +34,14 @@ def main(config):
     _, _, test_loader, kodak_loader = get_loader(config)
 
     print('#----------Prepareing Model----------#')
-    sc_model = Djscc(config)
+    # sc_model = Djscc(config)
+    sc_model = MVSC(config)
     sc_model = sc_model.cuda()
 
     print('#----------Prepareing loss, opt, sch and amp----------#')
     criterion = config.psnr_crit
 
-    config.work_dir = 'results/' + 'CIFAR10_2024-12-27_15-23-50' + '/'
+    config.work_dir = 'results/' + 'MVSC_0.06_4loss_1_12_AWGN_no_regular' + '/'
     log_dir = os.path.join(config.work_dir, 'log')
     logger = get_logger('train', log_dir)
 

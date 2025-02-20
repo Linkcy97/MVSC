@@ -56,8 +56,8 @@ class setting_config:
     signal_crit = MSELoss()
     cla_crit = CrossEntropyLoss()
     # multiple_snr = [-7]
-    # multiple_snr = [-7., -4., 0., 4., 7.]
-    multiple_snr = [1, 4, 7, 10, 13]
+    multiple_snr = [-7., -4., 0., 4., 7.]
+    # multiple_snr = [1, 4, 7, 10, 13]
 
     pretrained_path = './pre_trained/'
     num_classes = 10
@@ -87,7 +87,7 @@ class setting_config:
     epochs = 100
 
     # work_dir = 'results/' +  datasets + '_' + datetime.now().strftime('%Y-%m-%d_%H-%M-%S') + '/'
-    work_dir = 'results/'  + 'MVSC_0.06_4loss_1_12_AWGN_no_regular' + '/'
+    work_dir = 'results/'  + 'MVSC_0.06_4loss_1_12_AWGN_fix_para' + '/'
 
     val_interval = 30
     save_interval = 100
