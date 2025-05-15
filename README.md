@@ -37,6 +37,31 @@ tqdm==4.66.4
 ## setting config.py and run train.py
 python train.py         
 
+## run test.py to get result. This step is generally not needed, as the test results are already generated during training.
+python test.py
 
 ```
 
+## Citation
+
+If this work is useful for your research, please cite:
+
+```tex
+@article{li2025mvsc,
+  title={MVSC: Mamba Vision based Semantic Communication for Image Transmission with SNR Estimation},
+  author={Li, Chongyang and Zhang, Tianqian and Liu, Shouyin},
+  journal={IEEE Communications Letters},
+  year={2025},
+  publisher={IEEE}
+}
+```
+
+## Related links
+
+- SwinJSCC:https://github.com/semcomm/SwinJSCC
+- MambaVision:https://github.com/NVlabs/MambaVision
+- Sionna for Next Generation Physical Layer research:https://github.com/NVlabs/sionna
+- BPG image encoder and decoder: https://bellard.org/bpg
+- CIFAR100: https://www.cs.toronto.edu/~kriz/cifar.html
+
+Thank you for your outstanding contributions!
