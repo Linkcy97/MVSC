@@ -69,7 +69,6 @@ def main(config):
 
     print('#----------Prepareing Model----------#')
     model = MVSC(config)
-    # model = Djscc(config)
     model = model.cuda()
     cl_model = ResNet8({'in_channels': 3, 'out_channels': 10, 'activation': 'relu'})
     cl_model = cl_model.cuda()

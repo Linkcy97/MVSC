@@ -6,3 +6,4 @@ utils/jpeg.py
 utils/ldpc.py
 **.bpg
 **.png
+models/djscc.py

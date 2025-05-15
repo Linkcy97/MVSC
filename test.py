@@ -2,16 +2,15 @@
 # Author       : Li Chongyang of ACTL 
 # Email        : lichongyang2016@163.com
 # Date         : 2024-07-11 08:14:27
-# LastEditors  : Li Chongyang of ACTL
-# LastEditTime : 2024-07-12 09:30:17
-# FilePath     : \VM-UNet-main\test.py
+# LastEditors  : Chongyang Li
+# LastEditTime : 2025-05-15 10:20:32
+# FilePath     : /MVSC/test.py
 
 import os
 import torch
 from models.mamba_vision import MVSC
 from models.djscc import Djscc
 from models.distortion import *
-from classify_net import ResNet8
 from engine import *
 import os
 from utils.datasets import *
@@ -34,7 +33,6 @@ def main(config):
     _, _, test_loader, kodak_loader = get_loader(config)
 
     print('#----------Prepareing Model----------#')
-    # sc_model = Djscc(config)
     sc_model = MVSC(config)
     sc_model = sc_model.cuda()
 
