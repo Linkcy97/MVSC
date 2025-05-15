@@ -1,7 +1,6 @@
 import numpy as np
 from tqdm import tqdm
 import torch
-from torch.cuda.amp import autocast as autocast
 from utils.utils import save_imgs, AverageMeter
 from models.distortion import *
 import time
@@ -205,14 +204,16 @@ def test_one_epoch( test_loader,
                 start_time = time.time()
                 out, cbr, g_snr, snr, cla, semantic_feature, x_signal, mse4, mse1 = sc_model(imgs,multiple_snr[i])
                 snr_a = (d_snr(snr) == g_snr).float().mean()
+                mse_net_snr = nn.MSELoss()(snr, torch.full_like(snr, g_snr))
+                mse_p_snr = nn.MSELoss()(mse1, torch.full_like(mse1, g_snr))
                 time_list[i].append(time.time()-start_time)
                 psnr_list[i].append(psnr_loss_cal(out, imgs).item())
                 ms_ssim_list[i].append(1 - CalcuSSIM(imgs, out.clamp(0., 1.)).mean().item())
                 snr_acc_list[i].append(snr_a.item())
                 cla_acc_list[i].append((cla.argmax(1) == labels).float().mean().item())
                 s_mse_list[i].append(criterion(semantic_feature, x_signal).item())
-                mse_4_list[i].append(mse4.item())
-                mse_1_list[i].append(mse1.item())
+                mse_4_list[i].append(mse_net_snr.item())
+                mse_1_list[i].append(mse_p_snr.item())
 
         psnr_list_avg = [round(np.mean(sublist),4) if sublist else 0 for sublist in psnr_list]
         ms_ssim_list_avg = [round(np.mean(sublist),4) if sublist else 0 for sublist in ms_ssim_list]
@@ -229,7 +230,7 @@ def test_one_epoch( test_loader,
         log_info = (f'test in CIFAR, cbr: {cbr}, psnr: {psnr_list_avg},avg{np.mean(psnr_list_avg)}, ms_ssim: {ms_ssim_list_avg}, '
                     f'cla_acc: {cla_acc_list_avg}, snr_acc: {snr_acc_list_avg}, avg{np.mean(snr_acc_list_avg)}'
                     f'cla_acc: {cla_acc_list_avg}, s_mse: {s_mse_list_avg}, time: {time_list_avg},'
-                    f'mse_4: {mse_4_list_avg}, mse_1: {mse_1_list_avg}')
+                    f'mse_4: {mse_4_list_avg},avg{np.mean(mse_4_list_avg)} mse_1: {mse_1_list_avg},avg{np.mean(mse_1_list_avg)}' )
         print(log_info)
         logger.info(log_info)
     s_mse_list, psnr_list, ms_ssim_list, time_list, snr_acc_list, cla_acc_list, mse_4_list, mse_1_list = \
@@ -247,13 +248,17 @@ def test_one_epoch( test_loader,
                 imgs = data
                 imgs = imgs.cuda(non_blocking=True).float()
                 start_time = time.time()
-                out, cbr, g_snr, snr, cla, semantic_feature, x_signal, _, _ = sc_model(imgs,multiple_snr[i])
+                out, cbr, g_snr, snr, cla, semantic_feature, x_signal, mse4, mse1 = sc_model(imgs,multiple_snr[i])
                 snr_a = (torch.round(snr) == g_snr).float().mean()
+                mse_net_snr = nn.MSELoss()(snr, torch.full_like(snr, g_snr))
+                mse_p_snr = nn.MSELoss()(mse1, torch.full_like(mse1, g_snr))
                 time_list[i].append(time.time()-start_time)
                 psnr_list[i].append(psnr_loss_cal(out, imgs).item())
                 ms_ssim_list[i].append(1 - CalcuSSIM(imgs, out.clamp(0., 1.)).mean().item())
                 snr_acc_list[i].append(snr_a.item())
                 s_mse_list[i].append(criterion(semantic_feature, x_signal).item())
+                mse_4_list[i].append(mse_net_snr.item())
+                mse_1_list[i].append(mse_p_snr.item())
 
                 if config.test_datasets == 'Kodak':
                     save_imgs(imgs, out, j, config.work_dir + 'outputs/', test_data_name='_%ssnr'%multiple_snr[i])
@@ -275,7 +280,7 @@ def test_one_epoch( test_loader,
         log_info = (f'test in kodak, cbr: {cbr}, psnr: {psnr_list_avg}, avg{np.mean(psnr_list_avg)} '
                     f'ms_ssim: {ms_ssim_list_avg}, snr_acc: {snr_acc_list_avg}, avg:{np.mean(snr_acc_list_avg)}'
                     f's_mse:{s_mse_list_avg}, avg:{np.mean(s_mse_list_avg)} time: {time_list_avg}'
-                    f'mse_4: {mse_4_list_avg}, mse_1: {mse_1_list_avg}')
+                    f'mse_4: {mse_4_list_avg},avg{np.mean(mse_4_list_avg)} mse_1: {mse_1_list_avg},avg{np.mean(mse_1_list_avg)}')
         print(log_info)
         logger.info(log_info)
 

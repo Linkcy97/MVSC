@@ -86,8 +86,8 @@ class setting_config:
     gpu_id = '0'
     epochs = 100
 
-    # work_dir = 'results/' +  datasets + '_' + datetime.now().strftime('%Y-%m-%d_%H-%M-%S') + '/'
-    work_dir = 'results/'  + 'MVSC_0.06_4loss_1_12_AWGN_fix_para' + '/'
+    work_dir = 'results/' +  datasets + '_' + datetime.now().strftime('%Y-%m-%d_%H-%M-%S') + '/'
+    # work_dir = 'results/'  + 'MVSC_0.06_4loss_1_12_AWGN_pure_mamba' + '/'
 
     val_interval = 30
     save_interval = 100

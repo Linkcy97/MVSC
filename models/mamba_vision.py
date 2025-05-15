@@ -17,7 +17,7 @@ from timm.models.layers import DropPath, trunc_normal_
 import torch.nn.functional as F
 from mamba_ssm.ops.selective_scan_interface import selective_scan_fn
 from einops import rearrange, repeat
-from .channel import Channel
+from .channel import Channel, estimate_snr
 from fractions import Fraction
 
 
@@ -823,7 +823,7 @@ class MambaVisionDecoder(nn.Module):
                                      )
             self.levels.append(level)
         self.norm = nn.BatchNorm2d(num_features)
-        self.head_c = nn.Linear(C, int(dim * 2 ** (len(depths) - 1)))
+        self.head_c = nn.Linear(2*C, int(dim * 2 ** (len(depths) - 1)))
         self.classfiy_net = nn.Sequential(
             nn.Conv2d(dim, dim//2, 3, 1, 1),
             nn.ReLU(),
@@ -953,14 +953,15 @@ class MVSC(nn.Module):
         # ones = torch.ones_like(semantic_feature)
 
         # noise_anti = self.noise_anti(semantic_feature)
-
+        pilot = torch.ones(semantic_feature.shape[0], 256).to(semantic_feature.device)
         x_noise = self.channel(semantic_feature, g_snr)
+        pilot = self.channel(pilot, g_snr)
 
         x_signal = self.noise_est(x_noise)
         mse_4 = nn.MSELoss()(x_signal, semantic_feature)
         mse_1 = nn.MSELoss()(x_noise, semantic_feature)
         snr = 10*torch.log10(torch.mean(x_signal**2, dim=[1, 2, 3]) / torch.mean((x_noise-x_signal)**2, dim=[1, 2, 3]))
-        # x_ded = x_noise + x_de
+        p_snr = estimate_snr(pilot)
         x_denoise = torch.cat((x_signal, x_noise), dim=1)
         # x_signal1 = rearrange(x_signal, 'b c h w -> b (h w) c')
         # x_noise1 = rearrange(x_noise, 'b c h w -> b (h w) c')
@@ -968,5 +969,5 @@ class MVSC(nn.Module):
         x_denoise = self.de_att(x_denoise)
         x_denoise = rearrange(x_denoise, 'b c h w -> b (h w) c')
         x_noise = rearrange(x_noise, 'b c h w -> b (h w) c')
-        x, cla = self.decoder(x_noise, x_h)
-        return x, CBR, g_snr, snr, cla, semantic_feature, x_signal, mse_4, mse_1
+        x, cla = self.decoder(x_denoise, x_h)
+        return x, CBR, g_snr, snr, cla, semantic_feature, x_signal, mse_4, p_snr

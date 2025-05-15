@@ -41,7 +41,7 @@ def main(config):
     print('#----------Prepareing loss, opt, sch and amp----------#')
     criterion = config.psnr_crit
 
-    config.work_dir = 'results/' + 'MVSC_0.06_4loss_1_12_AWGN_no_regular' + '/'
+    config.work_dir = 'results/' + 'MVSC_0.06_4loss_1_12_AWGN' + '/'
     log_dir = os.path.join(config.work_dir, 'log')
     logger = get_logger('train', log_dir)
 

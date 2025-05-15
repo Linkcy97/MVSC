@@ -2,3 +2,7 @@ results/*
 **/__pycache__
 paper/*
 .vscode/*
+utils/jpeg.py
+utils/ldpc.py
+**.bpg
+**.png

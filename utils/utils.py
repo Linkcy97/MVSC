@@ -58,7 +58,6 @@ def get_logger(name, log_dir):
         name(str): name of logger
         log_dir(str): path of log
     '''
-
     if not os.path.exists(log_dir):
         os.makedirs(log_dir)
 
@@ -91,7 +90,6 @@ def log_config_info(config, logger):
         else:
             log_info = f'{k}: {v},'
             logger.info(log_info)
-
 
 
 def get_optimizer(config, model):
