@@ -1,7 +1,22 @@
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 
+class DiscreteSNRLayer(nn.Module):
+    def __init__(self, snr_values, temperature=-1.0):
+        super(DiscreteSNRLayer, self).__init__()
+        self.snr_values = torch.tensor(snr_values, dtype=torch.float32).cuda()
+        self.temperature = temperature
+
+    def forward(self, x):
+        # 计算每个 x 与 snr_values 中每个值的差的绝对值
+        diff = torch.abs(x.unsqueeze(1) - self.snr_values.unsqueeze(0))
+        # 找到最小差值的索引
+        indices = torch.argmin(diff, dim=1)
+        # 使用索引从 snr_values 中选择对应的值
+        return self.snr_values[indices]  
+    
 @torch.jit.script
 def create_window(window_size: int, sigma: float, channel: int):
     '''

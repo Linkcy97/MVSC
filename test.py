@@ -2,15 +2,15 @@
 # Author       : Li Chongyang of ACTL 
 # Email        : lichongyang2016@163.com
 # Date         : 2024-07-11 08:14:27
-# LastEditors  : Li Chongyang of ACTL
-# LastEditTime : 2024-07-12 09:30:17
-# FilePath     : \VM-UNet-main\test.py
+# LastEditors  : Chongyang Li
+# LastEditTime : 2025-05-15 10:20:32
+# FilePath     : /MVSC/test.py
 
 import os
 import torch
 from models.mamba_vision import MVSC
+from models.djscc import Djscc
 from models.distortion import *
-from classify_net import ResNet8
 from engine import *
 import os
 from utils.datasets import *
@@ -39,14 +39,14 @@ def main(config):
     print('#----------Prepareing loss, opt, sch and amp----------#')
     criterion = config.psnr_crit
 
-    config.work_dir = 'results/' + 'CIFAR10_2024-09-18_20-30-45' + '/'
+    config.work_dir = 'results/' + 'MVSC_0.06_4loss_1_12_AWGN' + '/'
     log_dir = os.path.join(config.work_dir, 'log')
     logger = get_logger('train', log_dir)
 
     if os.path.exists(os.path.join(config.work_dir, 'checkpoints/best.pth')):
         print('#----------Testing----------#')
         best_weight = torch.load(config.work_dir + 'checkpoints/best.pth')
-        sc_model.load_state_dict(best_weight,strict=False)
+        sc_model.load_state_dict(best_weight, strict=False)
         score = test_one_epoch(
                 test_loader,
                 kodak_loader,

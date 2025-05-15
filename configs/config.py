@@ -9,19 +9,19 @@ class setting_config:
     the config of training setting.
     """
 
-    chan_type = 'awgn'
+    chan_type = 'awgn'                          # 'rayleigh' or 'awgn'
     datasets = 'CIFAR10'
     test_datasets = 'Kodak'
     if datasets == 'CIFAR10':
         C = 8
         model_config = {
             'input_channels': 3, 
-            'depths':[2, 2],
-            'num_heads':[4, 4],
+            'depths':[2, 1],
+            'num_heads':[4, 2],
             'window_size':[8, 2],
-            'dim':128,
+            'dim':16,
             'C':C,
-            'in_dim':128,
+            'in_dim':16,
             'mlp_ratio':4,
             'resolution':32,
             'drop_path_rate':0.2
@@ -45,7 +45,7 @@ class setting_config:
         val_data_dir = "../datasets/CIFAR10/"
         test_data_dir = ["../datasets/Kodak/"]
     elif datasets == 'DIV2K':
-        train_data_dir = ["../datasets/DIV2K/DIV2K_train_HR/"]
+        train_data_dir = ["../datasets/DIV2K/DIV2K_train_HR/"]      
         val_data_dir = ["../datasets/DIV2K/DIV2K_valid_HR/"]
         test_data_dir = ["../datasets/Kodak/"]
 
@@ -53,9 +53,10 @@ class setting_config:
     norm = False
     psnr_crit = MSELoss()
     snr_crit = MSELoss()
+    signal_crit = MSELoss()
     cla_crit = CrossEntropyLoss()
     # multiple_snr = [-7]
-    multiple_snr = [-7, -4, 0, 4, 7]
+    multiple_snr = [-7., -4., 0., 4., 7.]
     # multiple_snr = [1, 4, 7, 10, 13]
 
     pretrained_path = './pre_trained/'
@@ -83,10 +84,10 @@ class setting_config:
     amp = False
     device = 'cuda'
     gpu_id = '0'
-    epochs = 10
+    epochs = 100
 
     work_dir = 'results/' +  datasets + '_' + datetime.now().strftime('%Y-%m-%d_%H-%M-%S') + '/'
-    # work_dir = 'results/'  + 'CIFAR10_2024-08-07_09-39-02'
+    # work_dir = 'results/'  + 'MVSC_0.06_4loss_1_12_AWGN_pure_mamba' + '/'
 
     val_interval = 30
     save_interval = 100

@@ -2,8 +2,16 @@ import torch.nn as nn
 import numpy as np
 import os
 import torch
-import time
 
+def estimate_snr(x):
+    original_signal = torch.ones_like(x)
+    # 计算信号的功率
+    signal_power = torch.mean(original_signal**2, dim=1, keepdim=True)
+    # 计算噪声功率
+    noise_power = torch.mean((x - original_signal)**2, dim=1, keepdim=True)
+    # 计算 SNR
+    snr = 10 * torch.log10(signal_power / noise_power)
+    return snr
 
 class Channel(nn.Module):
     """
