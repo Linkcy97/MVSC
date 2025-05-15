@@ -6,7 +6,6 @@ main_dir = os.path.dirname(os.path.abspath(__file__))
 if main_dir not in sys.path:
     sys.path.append(main_dir)
 import torch
-from classify_net import ResNet8
 from utils.datasets import get_loader
 from tensorboardX import SummaryWriter
 from models.mamba_vision import MVSC
@@ -70,9 +69,6 @@ def main(config):
     print('#----------Prepareing Model----------#')
     model = MVSC(config)
     model = model.cuda()
-    cl_model = ResNet8({'in_channels': 3, 'out_channels': 10, 'activation': 'relu'})
-    cl_model = cl_model.cuda()
-    cl_model.load_state_dict(torch.load('classify.pth'))
     cal_params_flops(model, config.input_size_h, logger)
 
 
